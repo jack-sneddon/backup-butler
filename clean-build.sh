@@ -28,8 +28,8 @@ go clean -cache
 
 # Step 7: Build the project
 echo "Building the project..."
-go build -o backup-butler ./cmd/main.go
-# go build ./...
+# go build -o backup-butler ./cmd/main.go
+go build ./...
 
 # Step 8: Run the binary to test
 # ./backup-butler -config configs/run_test_config.yaml

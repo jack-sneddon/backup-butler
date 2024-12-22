@@ -3,15 +3,18 @@ package backup
 
 import (
 	"time"
+
+	"github.com/jack-sneddon/backup-butler/internal/core/storage"
 )
 
 // Service represents the backup service with all required dependencies
 type Service struct {
-	config    *Config
-	logger    *Logger
-	metrics   *BackupMetrics
-	pool      *WorkerPool
-	versioner *VersionManager
+	config             *Config
+	logger             *Logger
+	metrics            *BackupMetrics
+	pool               *WorkerPool
+	versioner          *VersionManager
+	checksumCalculator *storage.ChecksumCalculator
 }
 
 // CopyTask represents a single file copy operation

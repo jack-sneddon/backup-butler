@@ -7,52 +7,23 @@ import (
 	"os"
 	"time"
 
-	"github.com/jack-sneddon/backup-butler/internal/backup"
+	"github.com/jack-sneddon/backup-butler/internal/app"
+	"github.com/jack-sneddon/backup-butler/internal/domain/backup"
 )
-
-func printHelp() {
-	fmt.Print(`backup-butler - Backup Utility
-
-Usage:
-  backup-butler [options]
-
-Options:
-  -config <file>       Path to the configuration file (JSON or YAML)
-  --help, -h          Show this help message and exit
-  --verbose, -v       Enable verbose logging
-  --quiet, -q         Suppress all output except errors
-  --validate          Validate the configuration file without performing a backup
-  --dry-run           Simulate the backup process without making any changes
-  --log-level <level> Set logging level: info, warn, error
-  --list-versions     List all backup versions
-  --show-version <id> Show details of a specific backup version
-  --latest-version    Show most recent backup details
-
-Examples:
-  backup-butler -config backup_config.json
-  backup-butler -config backup_config.yaml --dry-run --verbose
-  backup-butler -config backup_config.yaml --list-versions
-  backup-butler -config backup_config.yaml --show-version 20240117-150405
-  backup-butler -config backup_config.yaml --latest-version
-`)
-}
 
 func main() {
 	// Parse CLI flags
 	configPath := flag.String("config", "", "Path to the configuration file")
 	helpFlag := flag.Bool("help", false, "Show help message")
-	verboseFlag := flag.Bool("verbose", false, "Enable verbose logging")
-	quietFlag := flag.Bool("quiet", false, "Suppress all output except errors")
-	validateFlag := flag.Bool("validate", false, "Validate the configuration file without performing a backup")
-	dryRunFlag := flag.Bool("dry-run", false, "Simulate the backup process without making any changes")
-	logLevel := flag.String("log-level", "info", "Set logging level: info, warn, error")
+	validateFlag := flag.Bool("validate", false, "Validate the configuration file")
+	dryRunFlag := flag.Bool("dry-run", false, "Simulate the backup process")
 	listVersions := flag.Bool("list-versions", false, "List all backup versions")
 	showVersion := flag.String("show-version", "", "Show details of a specific backup version")
 	latestVersion := flag.Bool("latest-version", false, "Show most recent backup details")
 
 	flag.Parse()
 
-	// Show help message if --help or -h is provided
+	// Show help message if requested
 	if *helpFlag {
 		printHelp()
 		return
@@ -65,22 +36,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create backup configuration
-	cfg, err := backup.LoadConfig(*configPath)
-	if err != nil {
-		fmt.Printf("Failed to load configuration: %v\n", err)
-		os.Exit(1)
+	// Handle validation flag
+	if *validateFlag {
+		// Config validation is already done during service creation
+		fmt.Println("Configuration is valid.")
+		return
 	}
 
-	// Set configuration options from flags
-	cfg.Options = &backup.Options{
-		Verbose:  *verboseFlag,
-		Quiet:    *quietFlag,
-		LogLevel: *logLevel,
-	}
-
-	// Create backup service
-	service, err := backup.NewService(cfg)
+	// Create factory and backup service
+	factory := app.NewFactory(*configPath)
+	service, err := factory.CreateBackupService()
 	if err != nil {
 		fmt.Printf("Failed to create backup service: %v\n", err)
 		os.Exit(1)
@@ -105,44 +70,48 @@ func main() {
 		return
 	}
 
-	// Validate configuration if requested
-	if *validateFlag {
-		if err := backup.Validate(cfg); err != nil {
-			fmt.Printf("Configuration validation failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Configuration is valid.")
-		return
-	}
-
 	// Create context for the operation
 	ctx := context.Background()
 
 	// Perform the operation
 	if *dryRunFlag {
-		if !*quietFlag {
-			fmt.Println("Starting dry run...")
-		}
 		if err := service.DryRun(ctx); err != nil {
 			fmt.Printf("Dry run failed: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		if !*quietFlag {
-			fmt.Println("Starting backup...")
-		}
 		if err := service.Backup(ctx); err != nil {
 			fmt.Printf("Backup failed: %v\n", err)
 			os.Exit(1)
 		}
 	}
-
-	if !*quietFlag {
-		fmt.Println("Operation completed successfully.")
-	}
 }
 
-func printVersionList(service *backup.Service) {
+func printHelp() {
+	fmt.Print(`backup-butler - Backup Utility
+
+Usage:
+  backup-butler [options]
+
+Options:
+  -config <file>       Path to the configuration file (JSON or YAML)
+  --help, -h          Show this help message and exit
+  --validate          Validate the configuration file without performing a backup
+  --dry-run           Simulate the backup process without making any changes
+  --list-versions     List all backup versions
+  --show-version <id> Show details of a specific backup version
+  --latest-version    Show most recent backup details
+
+Examples:
+  backup-butler -config backup_config.json
+  backup-butler -config backup_config.yaml --dry-run
+  backup-butler -config backup_config.yaml --list-versions
+  backup-butler -config backup_config.yaml --show-version 20240117-150405
+  backup-butler -config backup_config.yaml --latest-version
+`)
+}
+
+func printVersionList(service backup.BackupService) {
 	versions := service.GetVersions()
 	if len(versions) == 0 {
 		fmt.Println("No backup versions found")
@@ -163,7 +132,7 @@ func printVersionList(service *backup.Service) {
 	}
 }
 
-func printVersionDetails(service *backup.Service, id string) {
+func printVersionDetails(service backup.BackupService, id string) {
 	version, err := service.GetVersion(id)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)

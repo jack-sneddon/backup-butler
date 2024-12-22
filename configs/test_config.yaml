@@ -1,6 +1,6 @@
 # Basic directory settings
 source_directory: "/Users/jack/tmp/2024-11-27"
-target_directory: "/Users/jack/tmp/2024-11-27-backyaml"
+target_directory: "/Users/jack/tmp/2024-11-27-back"
 folders_to_backup:
   - "Packers"
   - "Photos-001"

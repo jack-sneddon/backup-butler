@@ -1,7 +1,11 @@
 // service.go
 package backup
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/jack-sneddon/backup-butler/internal/core/storage"
+)
 
 // NewService creates a new backup service instance
 // service.go
@@ -21,9 +25,10 @@ func NewService(cfg *Config) (*Service, error) {
 	}
 
 	s := &Service{
-		config:    cfg,
-		logger:    logger,
-		versioner: versioner,
+		config:             cfg,
+		logger:             logger,
+		versioner:          versioner,
+		checksumCalculator: storage.NewChecksumCalculator(),
 	}
 
 	s.pool = NewWorkerPool(

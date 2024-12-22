@@ -1,0 +1,21 @@
+{
+    "source_directory": "/Users/jack/tmp/2024-11-27",
+    "target_directory": "/Users/jack/tmp/2024-11-27-back",
+    "folders_to_backup": [
+        "Packers",
+        "Photos-001",
+        "photos"
+    ],
+    "deep_duplicate_check": true,
+    "checksum_algorithm": "sha256",
+    "concurrency": 2,
+    "buffer_size": 32768,
+    "retry_attempts": 3,
+    "retry_delay": "1s",
+    "log_level": "info",
+    "exclude_patterns": [
+        "*.tmp",
+        ".DS_Store",
+        "Thumbs.db"
+    ]
+}
