@@ -33,7 +33,12 @@ func (f *Factory) CreateBackupService() (backup.BackupService, error) {
 	}
 
 	// 2. Create storage adapter
-	storage := storageadapter.NewFilesystemAdapter(config.ChecksumAlgorithm)
+	//storage := storageadapter.NewFilesystemAdapter(config.ChecksumAlgorithm)
+	// Create storage adapter
+	storage := storageadapter.NewFilesystemAdapter(
+		config.ChecksumAlgorithm,
+		config.BufferSize,
+	)
 
 	// 3. Create version manager
 	versioner, err := versionadapter.NewFileVersionManager(config.TargetDirectory)
