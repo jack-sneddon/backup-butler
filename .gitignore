@@ -1,3 +1,7 @@
+# helper shell files to ignore
+zip_project.sh
+setup-clean-arch.sh
+
 # Ignore build artifacts
 backup-butler
 *.log
