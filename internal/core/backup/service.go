@@ -121,12 +121,7 @@ func (s *Service) DryRun(ctx context.Context) error {
 
 	fmt.Printf("Starting dry run analysis of %d files...\n", totalFiles)
 
-	var (
-		filesToCopy  = 0
-		totalBytes   = int64(0)
-		skippedFiles = 0
-		skippedBytes = int64(0)
-	)
+	stats := &DryRunStats{TotalFiles: totalFiles}
 
 	// Process each task sequentially - pure analysis, no directory creation
 	for _, task := range tasks {
@@ -134,33 +129,17 @@ func (s *Service) DryRun(ctx context.Context) error {
 		if exists {
 			shouldSkip, _ := s.taskMgr.ShouldSkipFile(task)
 			if shouldSkip {
-				skippedFiles++
-				skippedBytes += task.Size
-				if !s.config.Options.Quiet {
-					fmt.Printf("Would skip: %s (%.2f MB)\n",
-						filepath.Base(task.Source),
-						float64(task.Size)/1024/1024)
-				}
+				stats.UpdateForFile(task, false)
+				stats.LogFileStatus(task, false, s.config.Options.Quiet)
 				continue
 			}
 		}
 
-		filesToCopy++
-		totalBytes += task.Size
-		if !s.config.Options.Quiet {
-			fmt.Printf("Would copy: %s (%.2f MB)\n",
-				filepath.Base(task.Source),
-				float64(task.Size)/1024/1024)
-		}
+		stats.UpdateForFile(task, true)
+		stats.LogFileStatus(task, true, s.config.Options.Quiet)
 	}
 
-	// Print summary
-	fmt.Printf("\nDry Run Summary:\n")
-	fmt.Printf("Files to copy:  %d (%.2f MB)\n", filesToCopy, float64(totalBytes)/1024/1024)
-	fmt.Printf("Files to skip:  %d (%.2f MB)\n", skippedFiles, float64(skippedBytes)/1024/1024)
-	fmt.Printf("Total files:    %d\n", totalFiles)
-	fmt.Printf("Total size:     %.2f MB\n", float64(totalBytes+skippedBytes)/1024/1024)
-
+	stats.Print()
 	return nil
 }
 
