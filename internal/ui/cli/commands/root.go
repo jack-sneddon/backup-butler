@@ -9,7 +9,7 @@ import (
 	"github.com/jack-sneddon/backup-butler/internal/ui/cli/formatter"
 )
 
-type CLI struct {
+type cli struct {
 	configPath    string
 	helpFlag      bool
 	validateFlag  bool
@@ -20,13 +20,13 @@ type CLI struct {
 	formatter     *formatter.OutputFormatter
 }
 
-func NewCLI() *CLI {
-	return &CLI{
+func NewCLI() *cli {
+	return &cli{
 		formatter: formatter.NewOutputFormatter(),
 	}
 }
 
-func (c *CLI) ParseFlags() {
+func (c *cli) ParseFlags() {
 	flag.StringVar(&c.configPath, "config", "", "Path to the configuration file")
 	flag.BoolVar(&c.helpFlag, "help", false, "Show help message")
 	flag.BoolVar(&c.validateFlag, "validate", false, "Validate the configuration file")
@@ -34,11 +34,10 @@ func (c *CLI) ParseFlags() {
 	flag.BoolVar(&c.listVersions, "list-versions", false, "List all backup versions")
 	flag.StringVar(&c.showVersion, "show-version", "", "Show details of a specific backup version")
 	flag.BoolVar(&c.latestVersion, "latest-version", false, "Show most recent backup details")
-
 	flag.Parse()
 }
 
-func (c *CLI) Execute() int {
+func (c *cli) Execute() int {
 	if c.helpFlag {
 		fmt.Println(c.formatter.FormatHelp())
 		return 0
@@ -51,11 +50,15 @@ func (c *CLI) Execute() int {
 	}
 
 	if c.validateFlag {
-		fmt.Println("Configuration is valid.")
+		// Config validation happens during service creation
+		if _, err := app.NewFactory(c.configPath).CreateBackupService(); err != nil {
+			fmt.Printf("Configuration invalid: %v\n", err)
+			return 1
+		}
+		fmt.Println("Configuration is valid")
 		return 0
 	}
 
-	// Create backup service
 	factory := app.NewFactory(c.configPath)
 	service, err := factory.CreateBackupService()
 	if err != nil {
@@ -63,7 +66,6 @@ func (c *CLI) Execute() int {
 		return 1
 	}
 
-	// Handle version operations
 	if c.listVersions {
 		versions := service.GetVersions()
 		fmt.Println(c.formatter.FormatVersionList(versions))
@@ -90,7 +92,6 @@ func (c *CLI) Execute() int {
 		return 0
 	}
 
-	// Handle backup operations
 	backupCmd := NewBackupCommand(service, c.formatter)
 	if c.dryRunFlag {
 		return backupCmd.DryRun()

@@ -22,8 +22,7 @@ func NewBackupCommand(service backup.BackupService, formatter *formatter.OutputF
 }
 
 func (c *BackupCommand) Backup() int {
-	ctx := context.Background()
-	if err := c.service.Backup(ctx); err != nil {
+	if err := c.service.Backup(context.Background()); err != nil {
 		fmt.Println(c.formatter.FormatError(err))
 		return 1
 	}
@@ -31,8 +30,7 @@ func (c *BackupCommand) Backup() int {
 }
 
 func (c *BackupCommand) DryRun() int {
-	ctx := context.Background()
-	if err := c.service.DryRun(ctx); err != nil {
+	if err := c.service.DryRun(context.Background()); err != nil {
 		fmt.Println(c.formatter.FormatError(err))
 		return 1
 	}
