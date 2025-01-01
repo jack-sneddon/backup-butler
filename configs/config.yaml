@@ -1,0 +1,22 @@
+# Basic directory settings
+source_directory: "/Users/jack/tmp/2024-11-27"
+target_directory: "/Users/jack/tmp/2024-11-27-backup"
+folders_to_backup:
+  - "Packers"
+  - "Photos-001"
+  - "photos"
+
+# Performance settings
+concurrency: 2
+buffer_size: 32768
+retry_attempts: 3
+retry_delay: "1s"
+
+# Optional patterns to exclude
+exclude_patterns:
+  - "*.tmp"
+  - ".DS_Store"
+  - "Thumbs.db"
+
+# Logging settings
+log_level: "info"

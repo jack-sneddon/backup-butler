@@ -7,6 +7,28 @@
 *.dll
 *.so
 *.dylib
+backup-butler
+
+# Build and cache directories
+/build/
+bin/
+dist/
+.tmp/
+.idea/
+.vscode/
+node_modules/
+vendor/
+.cache/
+.cache-loader/
+.nuxt/
+.next/
+out/
+public/
+dist/
+build/
+
+# Go Module Cache
+/go/pkg/
 
 # Test binary, built with `go test -c`
 *.test
@@ -23,3 +45,7 @@ go.work.sum
 
 # env file
 .env
+
+# Trunk
+.backup-butler-simplified/
+.trunk/
