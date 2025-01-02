@@ -31,6 +31,7 @@ type CompareResult struct {
 	Target      types.FileMetadata `json:"target"`
 	QuickHash   string             `json:"quick_hash"`
 	LastVersion string             `json:"last_version"`
+	Warnings    []string           `json:"warnings,omitempty"` // Added field for corruption warnings
 }
 
 // CopyResult represents the result of a file copy operation

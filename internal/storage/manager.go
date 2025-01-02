@@ -4,6 +4,7 @@ package storage
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -29,22 +30,23 @@ const (
 
 // Manager handles file operations
 type Manager struct {
+	baseDir            string
 	bufferSize         int
 	checksumCalculator *ChecksumCalculator
 }
 
 // NewManager creates a new storage manager
-func NewManager(bufferSize int) *Manager {
+func NewManager(targetDir string, bufferSize int) *Manager {
 	if bufferSize <= 0 {
 		bufferSize = 32 * 1024 // 32KB default
 	}
 	return &Manager{
+		baseDir:            targetDir,
 		bufferSize:         bufferSize,
 		checksumCalculator: NewChecksumCalculator(),
 	}
 }
 
-// GetMetadata retrieves file metadata including checksum
 // GetMetadata retrieves file metadata including checksum
 func (m *Manager) GetMetadata(path string) (types.FileMetadata, error) {
 	info, err := os.Stat(path)
@@ -67,142 +69,6 @@ func (m *Manager) GetMetadata(path string) (types.FileMetadata, error) {
 	return metadata, nil
 }
 
-// Compare determines if a file needs to be copied
-func (m *Manager) Compare(src, dst string, versionMgr types.VersionManager) (CompareResult, error) {
-	// Get source metadata (always needed)
-	srcInfo, err := m.GetMetadata(src)
-	if err != nil {
-		return CompareResult{
-			NeedsCopy: true,
-			Reason:    "failed to read source metadata",
-			Strategy:  CompareMetadataOnly,
-		}, fmt.Errorf("source read error: %w", err)
-	}
-
-	// Check if destination exists
-	dstInfo, err := m.GetMetadata(dst)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return CompareResult{
-				NeedsCopy: true,
-				Reason:    "destination does not exist",
-				Strategy:  CompareMetadataOnly,
-				Source:    srcInfo,
-			}, nil
-		}
-		return CompareResult{
-			NeedsCopy: true,
-			Reason:    "failed to read destination metadata",
-			Strategy:  CompareMetadataOnly,
-			Source:    srcInfo,
-		}, fmt.Errorf("destination read error: %w", err)
-	}
-
-	// Get last known version info if available
-	lastVersion, err := versionMgr.GetFileLastVersion(src)
-	if err == nil {
-		// We have version history
-		if srcInfo.Size != lastVersion.Size {
-			return CompareResult{
-				NeedsCopy:   true,
-				Reason:      "size different from last backup",
-				Strategy:    CompareMetadataOnly,
-				Source:      srcInfo,
-				Target:      dstInfo,
-				LastVersion: lastVersion.ID,
-			}, nil
-		}
-
-		if srcInfo.ModTime.Before(lastVersion.ModTime) {
-			return CompareResult{
-				NeedsCopy:   false,
-				Reason:      "file older than last backup",
-				Strategy:    CompareMetadataOnly,
-				Source:      srcInfo,
-				Target:      dstInfo,
-				LastVersion: lastVersion.ID,
-			}, nil
-		}
-
-		// File is newer, do quick hash check
-		srcQuickHash, err := m.calculateQuickHash(src)
-		if err != nil {
-			// Fall back to metadata only if quick hash fails
-			return CompareResult{
-				NeedsCopy: true,
-				Reason:    "quick hash failed",
-				Strategy:  CompareMetadataOnly,
-				Source:    srcInfo,
-				Target:    dstInfo,
-			}, nil
-		}
-
-		if srcQuickHash == lastVersion.QuickHash {
-			return CompareResult{
-				NeedsCopy:   false,
-				Reason:      "quick hash matches last backup",
-				Strategy:    CompareQuickHash,
-				Source:      srcInfo,
-				Target:      dstInfo,
-				QuickHash:   srcQuickHash,
-				LastVersion: lastVersion.ID,
-			}, nil
-		}
-	}
-
-	// No version history or quick hash mismatch - compare current files
-	if srcInfo.Size != dstInfo.Size {
-		return CompareResult{
-			NeedsCopy: true,
-			Reason:    "size mismatch",
-			Strategy:  CompareMetadataOnly,
-			Source:    srcInfo,
-			Target:    dstInfo,
-		}, nil
-	}
-
-	// If we get here, we need to do a full checksum
-	srcChecksum, err := m.checksumCalculator.CalculateChecksum(src)
-	if err != nil {
-		return CompareResult{
-			NeedsCopy: true,
-			Reason:    "failed to calculate source checksum",
-			Strategy:  CompareFullChecksum,
-			Source:    srcInfo,
-			Target:    dstInfo,
-		}, nil
-	}
-	// dstChecksum, err := m.CalculateChecksum(dst)
-	dstChecksum, err := m.checksumCalculator.CalculateChecksum(dst)
-	if err != nil {
-		return CompareResult{
-			NeedsCopy: true,
-			Reason:    "failed to calculate destination checksum",
-			Strategy:  CompareFullChecksum,
-			Source:    srcInfo,
-			Target:    dstInfo,
-		}, nil
-	}
-
-	if srcChecksum != dstChecksum {
-		return CompareResult{
-			NeedsCopy: true,
-			Reason:    "checksum mismatch",
-			Strategy:  CompareFullChecksum,
-			Source:    srcInfo,
-			Target:    dstInfo,
-		}, nil
-	}
-
-	return CompareResult{
-		NeedsCopy: false,
-		Reason:    "files match",
-		Strategy:  CompareFullChecksum,
-		Source:    srcInfo,
-		Target:    dstInfo,
-	}, nil
-}
-
 func (m *Manager) calculateQuickHash(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -220,6 +86,170 @@ func (m *Manager) calculateQuickHash(path string) (string, error) {
 
 	hash.Write(buffer[:n])
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// Compare determines if a file needs to be copied
+func (m *Manager) Compare(src, dst string, versionMgr types.VersionManager) (CompareResult, error) {
+	srcInfo, err := m.GetMetadata(src)
+	if err != nil {
+		return CompareResult{
+			NeedsCopy: true,
+			Reason:    "failed to read source metadata",
+			Strategy:  CompareMetadataOnly,
+		}, fmt.Errorf("source read error: %w", err)
+	}
+
+	// Check integrity against last version
+	lastVersion, _ := versionMgr.GetFileLastVersion(src)
+	if check := checkFileIntegrity(src, srcInfo, lastVersion); check != nil {
+		// Store integrity check result but continue with normal comparison
+		m.reportIntegrityIssue(check)
+	}
+
+	// Get last known good version info
+	/*
+	   lastVersion, err := versionMgr.GetFileLastVersion(src)
+	   if err == nil {
+	       // File exists in version history, check for potential corruption
+	       if srcInfo.ModTime.Equal(lastVersion.ModTime) {
+	           // File hasn't been modified, but...
+	           if srcInfo.Size != lastVersion.Size {
+	               return CompareResult{
+	                   NeedsCopy: true,
+	                   Reason:    "possible corruption: size changed without modification",
+	                   Strategy:  CompareMetadataOnly,
+	                   Source:    srcInfo,
+	                   Warnings:  []string{"File size changed without modification time change"},
+	               }, nil
+	           }
+	       }
+	   }
+	*/
+
+	// Check destination
+	dstInfo, err := m.GetMetadata(dst)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return CompareResult{
+				NeedsCopy: true,
+				Reason:    "destination does not exist",
+				Strategy:  CompareMetadataOnly,
+				Source:    srcInfo,
+			}, nil
+		}
+		return CompareResult{
+			NeedsCopy: true,
+			Reason:    "destination read error",
+			Strategy:  CompareMetadataOnly,
+			Source:    srcInfo,
+		}, nil
+	}
+
+	// Size comparison with corruption check
+	if srcInfo.Size != dstInfo.Size {
+		if lastVersion != nil && dstInfo.Size == lastVersion.Size {
+			return CompareResult{
+				NeedsCopy: true,
+				Reason:    "possible source corruption: size differs from last known good copy",
+				Strategy:  CompareMetadataOnly,
+				Source:    srcInfo,
+				Target:    dstInfo,
+				Warnings:  []string{"Source file size differs from last known good backup"},
+			}, nil
+		}
+		return CompareResult{
+			NeedsCopy: true,
+			Reason:    "size mismatch",
+			Strategy:  CompareMetadataOnly,
+			Source:    srcInfo,
+			Target:    dstInfo,
+		}, nil
+	}
+
+	// Quick hash with corruption detection
+	srcQuickHash, err := m.calculateQuickHash(src)
+	if err == nil {
+		if lastVersion != nil && lastVersion.QuickHash != "" {
+			if srcInfo.ModTime.Equal(lastVersion.ModTime) && srcQuickHash != lastVersion.QuickHash {
+				return CompareResult{
+					NeedsCopy: true,
+					Reason:    "possible corruption: content changed without modification",
+					Strategy:  CompareQuickHash,
+					Source:    srcInfo,
+					Target:    dstInfo,
+					Warnings:  []string{"File content changed without modification time change"},
+				}, nil
+			}
+		}
+
+		dstQuickHash, err := m.calculateQuickHash(dst)
+		if err == nil && srcQuickHash == dstQuickHash {
+			return CompareResult{
+				NeedsCopy: false,
+				Reason:    "quick hash match",
+				Strategy:  CompareQuickHash,
+				Source:    srcInfo,
+				Target:    dstInfo,
+				QuickHash: srcQuickHash,
+			}, nil
+		}
+	}
+
+	// Full checksum with corruption detection
+	if lastVersion != nil && srcInfo.ModTime.Equal(lastVersion.ModTime) && srcInfo.Checksum != lastVersion.Checksum {
+		return CompareResult{
+			NeedsCopy: true,
+			Reason:    "possible corruption: checksum changed without modification",
+			Strategy:  CompareFullChecksum,
+			Source:    srcInfo,
+			Target:    dstInfo,
+			Warnings:  []string{"File checksum changed without modification time change"},
+		}, nil
+	}
+
+	// Normal checksum comparison
+	if srcInfo.Checksum == dstInfo.Checksum {
+		return CompareResult{
+			NeedsCopy: false,
+			Reason:    "checksum match",
+			Strategy:  CompareFullChecksum,
+			Source:    srcInfo,
+			Target:    dstInfo,
+		}, nil
+	}
+
+	return CompareResult{
+		NeedsCopy: true,
+		Reason:    "checksum mismatch",
+		Strategy:  CompareFullChecksum,
+		Source:    srcInfo,
+		Target:    dstInfo,
+	}, nil
+}
+
+// internal/storage/manager.go
+func (m *Manager) reportIntegrityIssue(check *IntegrityCheck) error {
+	issuesPath := filepath.Join(m.baseDir, ".versions", "integrity_issues.json")
+
+	var issues []*IntegrityCheck
+	data, err := os.ReadFile(issuesPath)
+	if err == nil {
+		json.Unmarshal(data, &issues)
+	}
+
+	issues = append(issues, check)
+
+	// Keep only recent issues (last 100)
+	if len(issues) > 100 {
+		issues = issues[len(issues)-100:]
+	}
+
+	data, err = json.MarshalIndent(issues, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal integrity issues: %w", err)
+	}
+
+	return os.WriteFile(issuesPath, data, 0644)
 }
 
 // CopyFile copies a file with buffer
@@ -280,4 +310,23 @@ func (m *Manager) IsDirectory(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+func (m *Manager) GetIntegrityIssues() ([]*IntegrityCheck, error) {
+	issuesPath := filepath.Join(m.baseDir, ".versions", "integrity_issues.json")
+
+	data, err := os.ReadFile(issuesPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read integrity issues: %w", err)
+	}
+
+	var issues []*IntegrityCheck
+	if err := json.Unmarshal(data, &issues); err != nil {
+		return nil, fmt.Errorf("failed to parse integrity issues: %w", err)
+	}
+
+	return issues, nil
 }

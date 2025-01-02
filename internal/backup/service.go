@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/config"
 	"github.com/jack-sneddon/backup-butler/internal/storage"
@@ -32,8 +33,11 @@ type BackupStats struct {
 	FilesFailed    int64
 }
 
+// internal/backup/service.go
+// internal/backup/service.go
 func NewService(cfg *config.Config) (*Service, error) {
-	storageManager := storage.NewManager(cfg.BufferSize)
+	// Pass target directory and buffer size
+	storageManager := storage.NewManager(cfg.TargetDirectory, cfg.BufferSize)
 	copier := storage.NewCopier(storageManager, cfg.BufferSize)
 	versionMgr, err := version.NewManager(cfg.TargetDirectory)
 	if err != nil {
@@ -58,13 +62,11 @@ func (s *Service) Backup(ctx context.Context) error {
 
 	tasks, err := s.scanSourceDirectory()
 	if err != nil {
-		s.versionMgr.CompleteVersion("failed")
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
 	fmt.Printf("Found %d files to process\n", len(tasks))
 	if err := s.processBackupTasks(ctx, tasks); err != nil {
-		s.versionMgr.CompleteVersion("failed")
 		return fmt.Errorf("backup failed: %w", err)
 	}
 
@@ -75,7 +77,7 @@ func (s *Service) Backup(ctx context.Context) error {
 	fmt.Printf("Files skipped: %d (%.2f MB)\n", stats.FilesSkipped, float64(stats.BytesSkipped)/(1024*1024))
 	fmt.Printf("Files failed: %d\n", stats.FilesFailed)
 
-	return s.versionMgr.CompleteVersion("completed")
+	return s.versionMgr.CompleteVersion()
 }
 
 type BackupTask struct {
@@ -173,6 +175,7 @@ func (s *Service) processBackupTasks(ctx context.Context, tasks []BackupTask) er
 	}
 }
 
+// internal/backup/service.go
 func (s *Service) processTask(ctx context.Context, task BackupTask) error {
 	meta, err := s.storageManager.GetMetadata(task.SourcePath)
 	if err != nil {
@@ -180,13 +183,20 @@ func (s *Service) processTask(ctx context.Context, task BackupTask) error {
 			stats.FilesProcessed++
 			stats.FilesFailed++
 		})
+		// Update version with fail status
+		s.versionMgr.RecordFile(
+			task.RelativePath,
+			"failed",
+			0, // size is 0 for failed files
+			time.Time{},
+			"", // no checksum for failed files
+		)
 		return fmt.Errorf("failed to get source metadata: %w", err)
 	}
 
-	// Pass the version manager to Compare
 	compareResult, err := s.storageManager.Compare(task.SourcePath, task.DestPath, s.versionMgr)
 	if err != nil {
-		compareResult = storage.CompareResult{NeedsCopy: true, Reason: "comparison failed"}
+		compareResult = storage.CompareResult{NeedsCopy: true}
 	}
 
 	if compareResult.NeedsCopy {
@@ -196,6 +206,13 @@ func (s *Service) processTask(ctx context.Context, task BackupTask) error {
 				stats.FilesProcessed++
 				stats.FilesFailed++
 			})
+			s.versionMgr.RecordFile(
+				task.RelativePath,
+				"failed",
+				meta.Size,
+				meta.ModTime,
+				"",
+			)
 			return fmt.Errorf("failed to copy file: %w", err)
 		}
 
@@ -204,6 +221,13 @@ func (s *Service) processTask(ctx context.Context, task BackupTask) error {
 				stats.FilesProcessed++
 				stats.FilesFailed++
 			})
+			s.versionMgr.RecordFile(
+				task.RelativePath,
+				"failed",
+				meta.Size,
+				meta.ModTime,
+				"",
+			)
 			return fmt.Errorf("copy verification failed: %w", err)
 		}
 
@@ -214,15 +238,13 @@ func (s *Service) processTask(ctx context.Context, task BackupTask) error {
 			stats.BytesProcessed += result.BytesCopied
 		})
 
-		s.versionMgr.RecordFile(task.RelativePath, version.FileResult{
-			Path:         meta.Path,
-			Size:         meta.Size,
-			ModTime:      meta.ModTime,
-			Checksum:     meta.Checksum,
-			Status:       "copied",
-			CopyDuration: result.Duration,
-			Metadata:     meta,
-		})
+		s.versionMgr.RecordFile(
+			task.RelativePath,
+			"copied",
+			meta.Size,
+			meta.ModTime,
+			meta.Checksum,
+		)
 	} else {
 		s.incrementStats(func(stats *BackupStats) {
 			stats.FilesProcessed++
@@ -231,14 +253,13 @@ func (s *Service) processTask(ctx context.Context, task BackupTask) error {
 			stats.BytesProcessed += meta.Size
 		})
 
-		s.versionMgr.RecordFile(task.RelativePath, version.FileResult{
-			Path:     meta.Path,
-			Size:     meta.Size,
-			ModTime:  meta.ModTime,
-			Checksum: meta.Checksum,
-			Status:   "skipped",
-			Metadata: meta,
-		})
+		s.versionMgr.RecordFile(
+			task.RelativePath,
+			"skipped",
+			meta.Size,
+			meta.ModTime,
+			meta.Checksum,
+		)
 	}
 
 	return nil
@@ -253,4 +274,12 @@ func (s *Service) incrementStats(fn func(*BackupStats)) {
 			return
 		}
 	}
+}
+
+func (s *Service) GetVersionHistory() ([]version.VersionSummary, error) {
+	return s.versionMgr.GetVersions()
+}
+
+func (s *Service) GetIntegrityIssues() ([]*storage.IntegrityCheck, error) {
+	return s.storageManager.GetIntegrityIssues()
 }
