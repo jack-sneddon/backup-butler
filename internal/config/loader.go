@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -80,4 +81,17 @@ func validateConfig(config *Config) error {
 	}
 
 	return nil
+}
+
+func parseLogLevel(level string) LogLevel {
+	switch strings.ToLower(level) {
+	case "quiet":
+		return LogQuiet
+	case "verbose":
+		return LogVerbose
+	case "debug":
+		return LogDebug
+	default:
+		return LogNormal
+	}
 }

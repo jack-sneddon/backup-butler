@@ -33,11 +33,8 @@ type BackupStats struct {
 	FilesFailed    int64
 }
 
-// internal/backup/service.go
-// internal/backup/service.go
 func NewService(cfg *config.Config) (*Service, error) {
-	// Pass target directory and buffer size
-	storageManager := storage.NewManager(cfg.TargetDirectory, cfg.BufferSize)
+	storageManager := storage.NewManager(cfg.TargetDirectory, cfg.BufferSize, cfg)
 	copier := storage.NewCopier(storageManager, cfg.BufferSize)
 	versionMgr, err := version.NewManager(cfg.TargetDirectory)
 	if err != nil {

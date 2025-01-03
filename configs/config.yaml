@@ -19,4 +19,4 @@ exclude_patterns:
   - "Thumbs.db"
 
 # Logging settings
-log_level: "info"
+log_level: "debug"  # Options: quiet, normal, verbose, debug

@@ -1,6 +1,39 @@
 // internal/config/types.go
 package config
 
+import "strings"
+
+type LogLevel int
+
+const (
+	LogQuiet LogLevel = iota
+	LogNormal
+	LogVerbose
+	LogDebug
+)
+
+// Add custom unmarshaling for LogLevel
+func (l *LogLevel) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var level string
+	if err := unmarshal(&level); err != nil {
+		return err
+	}
+
+	switch strings.ToLower(level) {
+	case "quiet":
+		*l = LogQuiet
+	case "normal":
+		*l = LogNormal
+	case "verbose":
+		*l = LogVerbose
+	case "debug":
+		*l = LogDebug
+	default:
+		*l = LogNormal
+	}
+	return nil
+}
+
 // Config represents the backup configuration
 type Config struct {
 	SourceDirectory string   `yaml:"source_directory"`
@@ -11,7 +44,7 @@ type Config struct {
 	RetryAttempts   int      `yaml:"retry_attempts"`
 	RetryDelay      string   `yaml:"retry_delay"`
 	ExcludePatterns []string `yaml:"exclude_patterns"`
-	LogLevel        string   `yaml:"log_level"`
+	LogLevel        LogLevel `yaml:"log_level"`
 }
 
 type ConfigOptions struct {
@@ -27,7 +60,7 @@ func DefaultConfig() *Config {
 		BufferSize:    32 * 1024, // 32KB
 		RetryAttempts: 3,
 		RetryDelay:    "1s",
-		LogLevel:      "info",
+		LogLevel:      LogNormal,
 		ExcludePatterns: []string{
 			"*.tmp",
 			".DS_Store",

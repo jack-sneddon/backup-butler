@@ -12,17 +12,15 @@ import (
 
 // Copier handles file copy operations with verification
 type Copier struct {
-	manager            *Manager
-	checksumCalculator *ChecksumCalculator
-	bufferSize         int
+	manager    *Manager
+	bufferSize int
 }
 
 // NewCopier creates a new copier instance
 func NewCopier(manager *Manager, bufferSize int) *Copier {
 	return &Copier{
-		manager:            manager,
-		checksumCalculator: NewChecksumCalculator(),
-		bufferSize:         bufferSize,
+		manager:    manager,
+		bufferSize: bufferSize,
 	}
 }
 
@@ -102,6 +100,11 @@ func (c *Copier) Copy(ctx context.Context, src, dst string) (CopyResult, error) 
 		return CopyResult{}, fmt.Errorf("failed to set permissions: %w", err)
 	}
 
+	// Copy file mode and timestamps (add this after chmod)
+	if err := os.Chtimes(dst, srcInfo.ModTime(), srcInfo.ModTime()); err != nil {
+		return CopyResult{}, fmt.Errorf("failed to set timestamps: %w", err)
+	}
+
 	return CopyResult{
 		Source:      src,
 		Destination: dst,
@@ -112,12 +115,12 @@ func (c *Copier) Copy(ctx context.Context, src, dst string) (CopyResult, error) 
 
 // VerifyCopy verifies the integrity of a copied file
 func (c *Copier) VerifyCopy(src, dst string) error {
-	srcChecksum, err := c.checksumCalculator.CalculateChecksum(src)
+	srcChecksum, err := calculateFullChecksum(src)
 	if err != nil {
 		return fmt.Errorf("failed to calculate source checksum: %w", err)
 	}
 
-	dstChecksum, err := c.checksumCalculator.CalculateChecksum(dst)
+	dstChecksum, err := calculateFullChecksum(dst)
 	if err != nil {
 		return fmt.Errorf("failed to calculate destination checksum: %w", err)
 	}
