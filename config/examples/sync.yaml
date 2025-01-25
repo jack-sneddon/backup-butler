@@ -1,0 +1,23 @@
+# config/examples/sync.yaml
+source: "/Users/jack/tmp/2024-11-27"
+target: "/Users/jack/tmp/2024-11-27-backup"
+folders:
+  - "Packers"
+  - "Photos-001"
+  - "photos"
+
+exclude:
+  - "*.tmp"
+  - ".DS_Store"
+  - "Thumbs.db"
+  - ".Trashes"
+  - "._*"
+
+comparison:
+  algorithm: "sha256"
+  level: "standard"
+  buffer_size: 32768
+
+storage:
+  device_type: "hdd"
+  max_threads: 4
