@@ -49,3 +49,12 @@ go.work.sum
 # Trunk
 .backup-butler-simplified/
 .trunk/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+EOF
