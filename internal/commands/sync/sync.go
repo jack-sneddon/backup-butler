@@ -5,21 +5,40 @@ import (
 	"fmt"
 
 	"github.com/jack-sneddon/backup-butler/internal/config"
+	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/spf13/cobra"
 )
 
 func runSync(cmd *cobra.Command, args []string) error {
+	log := logger.Get()
 	cfgFile := cmd.Root().PersistentFlags().Lookup("config").Value.String()
+
+	log.Debugw("Starting sync command execution")
+	log.Infow("Loading configuration", "file", cfgFile)
+	log.Warnw("This is a stub implementation") // Add warning message
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
+		log.Debugw("Config loading failed", "error", err)
+		log.Errorw("Failed to load config", "error", err)
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	log.Debugw("Configuration loaded successfully",
+		"source", cfg.Source,
+		"target", cfg.Target)
+
 	// Get folder overrides if specified
 	if folders, _ := cmd.Flags().GetStringSlice("folders"); len(folders) > 0 {
+		log.Infow("Using folder override", "folders", folders)
 		cfg.Folders = folders
 	}
+
+	log.Infow("Starting sync",
+		"source", cfg.Source,
+		"target", cfg.Target,
+		"folders", cfg.Folders,
+		"deviceType", cfg.Storage.DeviceType)
 
 	fmt.Println("\nConfiguration:")
 	fmt.Printf("├── Locations\n")

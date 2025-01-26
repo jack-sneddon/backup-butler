@@ -2,8 +2,8 @@
 
 ## Phase 1: Basic CLI Foundation (Week 1)
 
-- [ ] Basic Cobra setup with version command
-- [ ] Simple config file loading (YAML)
+- [X] Basic Cobra setup with version command
+- [X] Simple config file loading (YAML)
 - [ ] Basic logging setup
 - [ ] Unit tests for config and version command
 - Checkpoint: CLI loads and displays version/config
