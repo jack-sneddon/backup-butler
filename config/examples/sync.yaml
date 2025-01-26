@@ -21,3 +21,6 @@ comparison:
 storage:
   device_type: "hdd"
   max_threads: 4
+
+logging:
+  level: "debug"  # debug, info, warn, error

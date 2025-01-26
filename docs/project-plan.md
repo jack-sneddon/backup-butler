@@ -4,7 +4,7 @@
 
 - [X] Basic Cobra setup with version command
 - [X] Simple config file loading (YAML)
-- [ ] Basic logging setup
+- [X] Basic logging setup
 - [ ] Unit tests for config and version command
 - Checkpoint: CLI loads and displays version/config
 

@@ -22,6 +22,10 @@ type Config struct {
 		DeviceType string `yaml:"device_type"`
 		MaxThreads int    `yaml:"max_threads"`
 	} `yaml:"storage"`
+
+	Logging struct {
+		Level string `yaml:"level"`
+	} `yaml:"logging"`
 }
 
 var ValidHashAlgorithms = map[string]bool{
