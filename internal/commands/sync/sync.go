@@ -3,6 +3,7 @@ package sync
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/jack-sneddon/backup-butler/internal/config"
 	"github.com/jack-sneddon/backup-butler/internal/logger"
@@ -19,15 +20,19 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
-		log.Debugw("Config loading failed", "error", err)
-		log.Errorw("Failed to load config", "error", err)
-		return fmt.Errorf("failed to load config: %w", err)
+		msg := strings.TrimPrefix(err.Error(), "invalid configuration: ")
+		msg = strings.TrimPrefix(msg, "failed to load config: ")
+		log.Error(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
-	log.Debugw("Configuration loaded successfully",
-		"source", cfg.Source,
-		"target", cfg.Target)
-
+	if cmd.Flag("log-level").Value.String() == "debug" {
+		fmt.Printf("\nConfiguration:\n")
+		// Only show configuration in debug mode
+		log.Debugw("Configuration loaded successfully",
+			"source", cfg.Source,
+			"target", cfg.Target)
+	}
 	// Get folder overrides if specified
 	if folders, _ := cmd.Flags().GetStringSlice("folders"); len(folders) > 0 {
 		log.Infow("Using folder override", "folders", folders)

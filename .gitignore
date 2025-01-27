@@ -58,3 +58,6 @@ go.work.sum
 # OS
 .DS_Store
 EOF
+
+# repo for ai
+repomix-output.txt

@@ -30,6 +30,7 @@ func init() {
 	rootCmd.PersistentFlags().StringP("config", "c", "", "config file path")
 	rootCmd.PersistentFlags().String("log-level", "error", "Log level (debug|info|warn|error)")
 	// rootCmd.PersistentFlags().String("log-level", "", "Override config log level")
+	rootCmd.SilenceUsage = true // Don't show usage on errors
 
 	// 2. Initialize logger in PreRun
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {

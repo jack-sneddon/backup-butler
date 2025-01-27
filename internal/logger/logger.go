@@ -35,7 +35,10 @@
 //	  "key2", value2)
 package logger
 
-import "go.uber.org/zap"
+import (
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
 
 var log *zap.SugaredLogger
 var LogLevel = zap.NewAtomicLevel()
@@ -43,6 +46,20 @@ var LogLevel = zap.NewAtomicLevel()
 func Init() error {
 	config := zap.NewDevelopmentConfig()
 	config.Level = LogLevel
+
+	// Customize output format
+	config.DisableStacktrace = true
+	config.DisableCaller = true // Remove file/line references
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	config.EncoderConfig.TimeKey = "" // Remove timestamp
+	config.EncoderConfig.NameKey = "" // Remove logger name
+	config.EncoderConfig.CallerKey = ""
+	config.EncoderConfig.FunctionKey = ""
+
+	// Only show configuration block in debug mode
+	config.EncoderConfig.MessageKey = "msg"
+	config.EncoderConfig.ConsoleSeparator = " " // Clean up JSON formatting
+
 	logger, err := config.Build()
 	if err != nil {
 		return err

@@ -1,17 +1,40 @@
-# scripts/test/test_config.sh
 #!/bin/bash
+source scripts/test/common.sh
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
+setup_configs() {
+    # Create test directories
+    rm -rf "$TEST_ROOT"
+    mkdir -p "$TEST_DIR/source" "$TEST_DIR/target" "$CONFIG_DIR"
 
-TEST_DIR="/tmp/backup-butler-test"
-CONFIG_DIR="${TEST_DIR}/configs"
+    # Create test configs
+    cat > "${CONFIG_DIR}/valid.yaml" << EOL
+source: "${TEST_DIR}/source"
+target: "${TEST_DIR}/target"
+folders:
+  - "test1"
+comparison:
+  algorithm: "sha256"
+  level: "standard"
+storage:
+  device_type: "hdd"
+  max_threads: 4
+EOL
 
-# Setup
-mkdir -p "${TEST_DIR}/source" "${TEST_DIR}/target" "$CONFIG_DIR"
 
-# Test configs
+    # Valid config
+    cat > "${CONFIG_DIR}/valid.yaml" << EOL
+source: "${TEST_DIR}/source"
+target: "${TEST_DIR}/target"
+folders:
+  - "test1"
+comparison:
+  algorithm: "sha256"
+  level: "standard"
+storage:
+  device_type: "hdd"
+  max_threads: 4
+EOL
+
 cat > "${CONFIG_DIR}/valid.yaml" << EOL
 source: "${TEST_DIR}/source"
 target: "${TEST_DIR}/target"
@@ -93,45 +116,51 @@ cat > "${CONFIG_DIR}/defaults.yaml" << EOL
 source: "${TEST_DIR}/source"
 target: "${TEST_DIR}/target"
 EOL
+}
 
 
-function run_test() {
-    printf "Testing %s... " "$1"
-    output=$(./bin/backup-butler sync -c "$2" 2>&1)
-    ret=$?
-    echo "Output: $output" # Debug line
-    if [ $ret -eq $3 ]; then
+run_test() {
+    local name=$1
+    local config=$2
+    local expected_status=$3
+
+    printf "  Testing %-30s" "$name..."
+    output=$(./bin/backup-butler sync -c "$config" 2>&1)
+    status=$?
+
+    if [[ $status -eq $expected_status ]]; then
         printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+        return 0
     else
         printf "${RED}FAIL${NC}\n"
+        $VERBOSE || echo "$output"  # Show output on failure unless verbose
+        return 1
     fi
 }
 
-function check_defaults() {
-    printf "Testing Default values... "
-    output=$(./bin/backup-butler sync -c "${CONFIG_DIR}/defaults.yaml" 2>&1)
-    if [[ $output == *"Algorithm: sha256"* && 
-          $output == *"Level: standard"* && 
-          $output == *"Device: hdd"* && 
-          $output == *"Threads: 4"* ]]; then
-        printf "${GREEN}PASS${NC}\n"
-    else
-        printf "${RED}FAIL${NC}\n"
-    fi
+main() {
+    local failed=0
+
+    printf "Running configuration tests...\n"
+    setup_test_env
+    setup_configs
+
+    # Run tests
+    run_test "valid config" "${CONFIG_DIR}/valid.yaml" 0 || failed=1
+    run_test "invalid algorithm" "${CONFIG_DIR}/invalid_algo.yaml" 1 || failed=1
+    run_test "excess thread count" "${CONFIG_DIR}/excess_threads.yaml" 1 || failed=1
+    run_test "missing source directory" "${CONFIG_DIR}/missing_source.yaml" 1 || failed=1
+    run_test "non-existent source directory" "${CONFIG_DIR}/non_existent_source.yaml" 1 || failed=1
+    run_test "invalid YAML syntax" "${CONFIG_DIR}/invalid_yaml.yaml" 1 || failed=1
+    run_test "missing comparison settings" "${CONFIG_DIR}/missing_comparison.yaml" 1 || failed=1
+    run_test "invalid device type" "${CONFIG_DIR}/invalid_device.yaml" 1 || failed=1
+    run_test "minimal config with defaults" "${CONFIG_DIR}/defaults.yaml" 0 || failed=1
+
+    # Cleanup
+    rm -rf "$TEST_ROOT"
+
+    return $failed
 }
 
-echo "Testing Backup Butler Configuration..."
-run_test "Valid config" "${CONFIG_DIR}/valid.yaml" 0
-run_test "Invalid algorithm" "${CONFIG_DIR}/invalid_algo.yaml" 1
-# run_test "Invalid thread count (-1)" "${CONFIG_DIR}/invalid_threads.yaml" 1
-run_test "Excess thread count" "${CONFIG_DIR}/excess_threads.yaml" 1
-run_test "Missing source directory" "${CONFIG_DIR}/missing_source.yaml" 1
-run_test "Non-existent source directory" "${CONFIG_DIR}/non_existent_source.yaml" 1
-run_test "Invalid YAML syntax" "${CONFIG_DIR}/invalid_yaml.yaml" 1
-run_test "Missing comparison settings" "${CONFIG_DIR}/missing_comparison.yaml" 1
-run_test "Invalid device type" "${CONFIG_DIR}/missing_comparison.yaml" 1
-run_test "Minimal config with defaults" "${CONFIG_DIR}/defaults.yaml" 0
-check_defaults
-
-# Cleanup
-rm -rf "$TEST_DIR"
+main

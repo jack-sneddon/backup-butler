@@ -1,38 +1,77 @@
 #!/bin/bash
+source scripts/test/common.sh
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
+setup_test_env() {
+    rm -rf "$TEST_ROOT"
+    mkdir -p "$TEST_DIR/source" "$TEST_DIR/target"
 
-CONFIG="config/examples/sync.yaml"
-
-function test_log_level() {
-   printf "Testing %-6s level... " "${1:-default}"
-   
-   cmd="./bin/backup-butler sync -c $CONFIG"
-   [[ $1 != "default" ]] && cmd="$cmd --log-level $1"
-   
-   output=$($cmd 2>&1)
-   
-   case "$1" in
-       "default"|"error")
-           [[ ! $output =~ INFO && ! $output =~ DEBUG ]] && echo -e "${GREEN}PASS${NC}" || echo -e "${RED}FAIL${NC}"
-           ;;
-       "debug")
-           [[ $output =~ DEBUG ]] && echo -e "${GREEN}PASS${NC}" || echo -e "${RED}FAIL${NC}"
-           ;;
-       "info")
-           [[ $output =~ INFO && ! $output =~ DEBUG ]] && echo -e "${GREEN}PASS${NC}" || echo -e "${RED}FAIL${NC}"
-           ;;
-       "warn")
-           [[ $output =~ WARN && ! $output =~ INFO && ! $output =~ DEBUG ]] && echo -e "${GREEN}PASS${NC}" || echo -e "${RED}FAIL${NC}"
-           ;;
-   esac
+    # Create test config
+    cat > "${TEST_DIR}/test_config.yaml" << EOL
+source: "${TEST_DIR}/source"
+target: "${TEST_DIR}/target"
+comparison:
+  algorithm: "sha256"
+  level: "standard"
+storage:
+  device_type: "hdd"
+  max_threads: 4
+EOL
 }
 
-echo "Testing Log Levels..."
-test_log_level "default"
-test_log_level "debug"
-test_log_level "info"
-test_log_level "warn"
-test_log_level "error"
+run_log_test() {
+    local level=$1
+
+    printf "  Testing %-30s" "${level:-default} level..."
+
+    cmd="./bin/backup-butler sync -c ${TEST_DIR}/test_config.yaml"
+    [[ $level != "default" ]] && cmd="$cmd --log-level $level"
+
+    output=$($cmd 2>&1)
+    success=false
+
+    case "$level" in
+        "default"|"error")
+            [[ ! $output =~ "INFO" && ! $output =~ "DEBUG" && $output =~ "Configuration" ]] && success=true
+            ;;
+        "debug")
+            [[ $output =~ "DEBUG" ]] && success=true
+            ;;
+        "info")
+            [[ $output =~ "INFO" && ! $output =~ "DEBUG" ]] && success=true
+            ;;
+        "warn")
+            [[ $output =~ "WARN" && ! $output =~ "INFO" ]] && success=true
+            ;;
+    esac
+
+    if $success; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+        return 0
+    else
+        printf "${RED}FAIL${NC}\n"
+        $VERBOSE || echo "$output"
+        return 1
+    fi
+}
+
+main() {
+    local failed=0
+    printf "Running logging tests...\n"
+
+    setup_test_env
+
+    run_log_test "default" || failed=1
+    run_log_test "debug" || failed=1
+    run_log_test "info" || failed=1
+    run_log_test "warn" || failed=1
+    run_log_test "error" || failed=1
+
+
+    # cleanup
+    rm -rf "$TEST_ROOT"
+
+    return $failed
+}
+
+main
