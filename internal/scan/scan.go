@@ -29,102 +29,198 @@
 // The scanner is particularly optimized for HDDs by minimizing random access
 // and grouping operations by directory to reduce disk head movement.
 // internal/scan/scan.go
+// internal/scan/scan.go
+// internal/scan/scan.go
 package scan
 
 import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"go.uber.org/zap"
 )
-
-type FileInfo struct {
-	Path    string
-	Size    int64
-	ModTime int64
-	IsDir   bool
-	Parent  string
-}
-
-type DirectoryStats struct {
-	Path      string
-	FileCount int
-	TotalSize int64
-	Files     []*FileInfo
-}
-
-type Progress struct {
-	CurrentDir     string
-	ScannedDirs    int
-	ScannedFiles   int
-	ProcessedBytes int64
-	TotalBytes     int64
-}
 
 type Scanner struct {
 	stats    map[string]*DirectoryStats
 	log      *zap.SugaredLogger
 	progress *Progress
 	rootPath string
+	opts     *ScannerOptions
+	mu       sync.Mutex // Protects stats map
 }
 
-type FileStatus byte
-
-const (
-	StatusMatch   FileStatus = '=' // File identical
-	StatusNew     FileStatus = '+' // Only in source
-	StatusMissing FileStatus = '-' // Only in target
-	StatusDiffer  FileStatus = '*' // Content differs
-	StatusError   FileStatus = '!' // Error reading/comparing
-)
-
-type FileComparison struct {
-	Path   string
-	Status FileStatus
-	Source *FileInfo
-	Target *FileInfo
-}
-
-func NewScanner() *Scanner {
+func NewScanner(options *ScannerOptions) *Scanner {
+	if options == nil {
+		options = &ScannerOptions{
+			MaxDepth:   -1, // No limit by default
+			BufferSize: 32768,
+		}
+	}
 	return &Scanner{
 		stats:    make(map[string]*DirectoryStats),
 		log:      logger.Get(),
-		progress: &Progress{},
+		progress: &Progress{Phase: "initializing"},
+		opts:     options,
 	}
+}
+
+// GetProgress returns the current progress information
+func (s *Scanner) GetProgress() *Progress {
+	return s.progress
 }
 
 func (s *Scanner) Scan(root string) (*Progress, error) {
 	s.rootPath = root
+	s.progress.Phase = "counting"
 
-	// First pass - get total size
-	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			s.progress.TotalBytes += info.Size()
-		}
-		return nil
-	}); err != nil {
+	// Reset all counters
+	s.progress.TotalFiles = 0
+	s.progress.TotalBytes = 0
+	s.progress.ScannedFiles = 0
+	s.progress.ScannedDirs = 0
+	s.progress.ProcessedBytes = 0
+	s.progress.ExcludedFiles = 0
+	s.progress.ExcludedDirs = 0
+
+	// First pass - count total files and size
+	if err := s.countFiles(root); err != nil {
 		return nil, err
 	}
 
+	s.log.Debugw("Count complete",
+		"totalFiles", s.progress.TotalFiles,
+		"totalBytes", s.progress.TotalBytes,
+		"excludedFiles", s.progress.ExcludedFiles)
+
 	// Second pass - detailed scan
-	return s.progress, filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	if err := s.scanFiles(root, 0); err != nil {
+		return nil, err
+	}
+
+	return s.progress, nil
+}
+
+func (s *Scanner) countFiles(root string) error {
+	// Convert root to absolute path
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+
+	s.log.Debugw("Starting file count",
+		"root", absRoot,
+		"excludePatterns", s.opts.ExcludePatterns,
+		"includeFolders", s.opts.IncludeFolders)
+
+	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			s.progress.AddError(NewScanError(path, "access", err))
+			return nil // Continue despite errors
 		}
 
-		s.progress.CurrentDir = filepath.Dir(path)
+		s.log.Debugw("Processing path",
+			"path", path,
+			"isDir", info.IsDir(),
+			"root", absRoot)
+
 		if info.IsDir() {
+			// Skip directory pattern checks for root
+			if path != absRoot {
+				if !shouldIncludeFolder(path, s.opts.IncludeFolders) {
+					s.log.Debugw("Excluding directory by folder list", "path", path)
+					s.progress.ExcludedDirs++
+					return filepath.SkipDir
+				}
+				if matchesPattern(path, s.opts.ExcludePatterns) {
+					s.log.Debugw("Excluding directory by pattern", "path", path)
+					s.progress.ExcludedDirs++
+					return filepath.SkipDir
+				}
+			}
 			s.progress.ScannedDirs++
-		} else {
-			s.progress.ScannedFiles++
-			s.progress.ProcessedBytes += info.Size()
+			return nil
 		}
 
+		// Handle files
+		if len(s.opts.ExcludePatterns) > 0 {
+			s.log.Debugw("Checking file against patterns",
+				"filename", filepath.Base(path),
+				"patterns", s.opts.ExcludePatterns)
+		}
+
+		if shouldExclude := matchesPattern(path, s.opts.ExcludePatterns); shouldExclude {
+			s.log.Debugw("Excluding file by pattern",
+				"path", path,
+				"patterns", s.opts.ExcludePatterns)
+			s.progress.ExcludedFiles++
+			return nil
+		}
+
+		// Include the file in totals
+		s.progress.TotalFiles++
+		s.progress.TotalBytes += info.Size()
+		s.log.Debugw("Including file",
+			"path", path,
+			"size", info.Size(),
+			"totalFiles", s.progress.TotalFiles,
+			"totalBytes", s.progress.TotalBytes)
+
+		return nil
+	})
+}
+
+func (s *Scanner) scanFiles(root string, depth int) error {
+	// Convert root to absolute path
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+
+	if s.opts.MaxDepth >= 0 && depth > s.opts.MaxDepth {
+		return nil
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		s.progress.AddError(NewScanError(root, "read_dir", err))
+		return nil
+	}
+
+	s.progress.CurrentDir = root
+
+	for _, entry := range entries {
+		path := filepath.Join(root, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			s.progress.AddError(NewScanError(path, "stat", err))
+			continue
+		}
+
+		if info.IsDir() {
+			// Skip directory pattern checks for root
+			if path != absRoot {
+				if !shouldIncludeFolder(path, s.opts.IncludeFolders) {
+					continue
+				}
+				if matchesPattern(path, s.opts.ExcludePatterns) {
+					continue
+				}
+			}
+			if err := s.scanFiles(path, depth+1); err != nil {
+				s.progress.AddError(err)
+			}
+			continue
+		}
+
+		if matchesPattern(path, s.opts.ExcludePatterns) {
+			continue
+		}
+
+		// Process file
+		s.mu.Lock()
 		parent := filepath.Dir(path)
 		if _, exists := s.stats[parent]; !exists {
 			s.stats[parent] = &DirectoryStats{Path: parent}
@@ -132,19 +228,21 @@ func (s *Scanner) Scan(root string) (*Progress, error) {
 
 		dirStats := s.stats[parent]
 		dirStats.FileCount++
-		if !info.IsDir() {
-			dirStats.TotalSize += info.Size()
-			dirStats.Files = append(dirStats.Files, &FileInfo{
-				Path:    path,
-				Size:    info.Size(),
-				ModTime: info.ModTime().Unix(),
-				IsDir:   info.IsDir(),
-				Parent:  parent,
-			})
-		}
+		dirStats.TotalSize += info.Size()
+		dirStats.Files = append(dirStats.Files, &FileInfo{
+			Path:    path,
+			Size:    info.Size(),
+			ModTime: info.ModTime().Unix(),
+			IsDir:   info.IsDir(),
+			Parent:  parent,
+		})
+		s.mu.Unlock()
 
-		return nil
-	})
+		s.progress.ScannedFiles++
+		s.progress.ProcessedBytes += info.Size()
+	}
+
+	return nil
 }
 
 func (s *Scanner) GetDirectoryStats() []*DirectoryStats {

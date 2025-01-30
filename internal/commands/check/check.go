@@ -3,8 +3,7 @@ package check
 
 import (
 	"fmt"
-	"path/filepath"
-	"strings"
+	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/config"
 	"github.com/jack-sneddon/backup-butler/internal/logger"
@@ -12,11 +11,25 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ValidationLevel defines how thorough the check should be
+type ValidationLevel string
+
+const (
+	Quick    ValidationLevel = "quick"    // Size and modification time only
+	Standard ValidationLevel = "standard" // Includes basic hash comparison
+	Deep     ValidationLevel = "deep"     // Full content verification
+)
+
 func NewCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check [source] [target]",
 		Short: "Check backup integrity",
-		RunE:  runCheck,
+		Long: `Check performs integrity validation between source and target directories.
+Validation levels:
+  quick:     Compare size and modification times only
+  standard:  Include hash comparison (default)
+  deep:      Perform full content verification`,
+		RunE: runCheck,
 	}
 
 	cmd.Flags().StringP("level", "l", "standard", "validation level (quick|standard|deep)")
@@ -26,8 +39,15 @@ func NewCheckCmd() *cobra.Command {
 }
 
 // internal/commands/check/check.go
+
 func runCheck(cmd *cobra.Command, args []string) error {
 	log := logger.Get()
+
+	// Get validation level
+	level, _ := cmd.Flags().GetString("level")
+	if !isValidLevel(level) {
+		return fmt.Errorf("invalid validation level: %s", level)
+	}
 
 	cfgFile := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 	log.Debugw("Loading config", "file", cfgFile)
@@ -37,35 +57,138 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	scanner := scan.NewScanner()
+	log.Debugw("Config loaded",
+		"source", cfg.Source,
+		"target", cfg.Target,
+		"excludePatterns", cfg.Exclude,
+		"includeFolders", cfg.Folders,
+		"logging", cfg.Logging)
+
+	// Create scanner options from config
+	opts := &scan.ScannerOptions{
+		ExcludePatterns: cfg.Exclude,
+		IncludeFolders:  cfg.Folders,
+		BufferSize:      cfg.Comparison.BufferSize,
+		MaxDepth:        -1, // No depth limit by default
+	}
+
+	scanner := scan.NewScanner(opts)
+
+	// Start progress display
+	doneChan := make(chan bool)
+	go displayProgress(scanner.GetProgress(), doneChan)
+
+	// Perform the scan
 	progress, err := scanner.Scan(cfg.Source)
 	if err != nil {
+		doneChan <- true
 		return err
 	}
 
-	log.Infow("Scan complete",
-		"dirs", progress.ScannedDirs,
-		"files", progress.ScannedFiles,
-		"size", progress.TotalBytes)
+	// Print final summary
+	doneChan <- true
+	printSummary(cfg, progress)
 
-	fmt.Printf("\nScan Results:\n")
-	fmt.Printf("├── Source: %s\n", cfg.Source)
-	fmt.Printf("├── Summary\n")
-	fmt.Printf("│   ├── Directories: %d\n", progress.ScannedDirs)
-	fmt.Printf("│   ├── Files: %d\n", progress.ScannedFiles)
-	fmt.Printf("│   └── Total Size: %s\n", formatBytes(progress.TotalBytes))
-
+	// Perform comparison based on validation level
 	comparisons, err := scanner.Compare(cfg.Source, cfg.Target)
 	if err != nil {
 		return err
 	}
 
+	// Print comparison results
+	printResults(comparisons)
+
+	return nil
+}
+
+func displayProgress(progress *scan.Progress, done chan bool) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			fmt.Print("\033[2K\r") // Clear the line
+			return
+		case <-ticker.C:
+			if progress.TotalBytes > 0 {
+				percentage := float64(progress.ProcessedBytes) / float64(progress.TotalBytes) * 100
+				fmt.Printf("\033[2K\r%s - %.1f%% (%d/%d files, %s/%s)",
+					progress.CurrentDir,
+					percentage,
+					progress.ScannedFiles,
+					progress.TotalFiles,
+					formatBytes(progress.ProcessedBytes),
+					formatBytes(progress.TotalBytes))
+			}
+		}
+	}
+}
+
+func printSummary(cfg *config.Config, progress *scan.Progress) {
+	fmt.Printf("\nScan Results:\n")
+	fmt.Printf("├── Locations\n")
+	fmt.Printf("│   ├── Source: %s\n", cfg.Source)
+	fmt.Printf("│   └── Target: %s\n", cfg.Target)
+
+	fmt.Printf("├── Summary\n")
+	fmt.Printf("│   ├── Directories: %d\n", progress.ScannedDirs)
+	fmt.Printf("│   ├── Files: %d\n", progress.ScannedFiles)
+	fmt.Printf("│   ├── Total Size: %s\n", formatBytes(progress.TotalBytes))
+	if progress.ExcludedFiles > 0 || progress.ExcludedDirs > 0 {
+		fmt.Printf("│   ├── Excluded Files: %d\n", progress.ExcludedFiles)
+		fmt.Printf("│   └── Excluded Directories: %d\n", progress.ExcludedDirs)
+	} else {
+		fmt.Printf("│   └── No Exclusions\n")
+	}
+
+	if len(progress.Errors) > 0 {
+		fmt.Printf("├── Scan Errors\n")
+		for i, err := range progress.Errors {
+			if i == len(progress.Errors)-1 {
+				fmt.Printf("│   └── %s\n", err)
+			} else {
+				fmt.Printf("│   ├── %s\n", err)
+			}
+		}
+	}
+}
+
+func printResults(comparisons []*scan.FileComparison) {
+	var matches, new, missing, differs, errors int
+
 	fmt.Printf("└── File Status\n")
 	for _, comp := range comparisons {
+		switch comp.Status {
+		case scan.StatusMatch:
+			matches++
+		case scan.StatusNew:
+			new++
+		case scan.StatusMissing:
+			missing++
+		case scan.StatusDiffer:
+			differs++
+		case scan.StatusError:
+			errors++
+		}
 		fmt.Printf("    %c %s\n", comp.Status, comp.Path)
 	}
 
-	return nil
+	// Print statistics
+	fmt.Printf("\nResults Summary:\n")
+	fmt.Printf("├── Matched:  %d files\n", matches)
+	fmt.Printf("├── New:      %d files\n", new)
+	fmt.Printf("├── Missing:  %d files\n", missing)
+	fmt.Printf("├── Modified: %d files\n", differs)
+	fmt.Printf("└── Errors:   %d files\n", errors)
+}
+
+func isValidLevel(level string) bool {
+	switch ValidationLevel(level) {
+	case Quick, Standard, Deep:
+		return true
+	}
+	return false
 }
 
 func formatBytes(bytes int64) string {
@@ -79,21 +202,4 @@ func formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-
-func formatStats(scanner *scan.Scanner, rootPath string) string {
-	log := logger.Get()
-	log.Infow("Formatting stats", "root", rootPath)
-
-	var b strings.Builder
-	for _, dir := range scanner.GetDirectoryStats() {
-		relPath, _ := filepath.Rel(rootPath, dir.Path)
-		if relPath == "." {
-			continue
-		}
-		b.WriteString(fmt.Sprintf("    ├── %s\n", relPath))
-		b.WriteString(fmt.Sprintf("    │   ├── Files: %d\n", dir.FileCount))
-		b.WriteString(fmt.Sprintf("    │   └── Size: %s\n", formatBytes(dir.TotalSize)))
-	}
-	return b.String()
 }
