@@ -1,0 +1,47 @@
+classDiagram
+    class Validator {
+        <<interface>>
+        +Validate(source, target *FileInfo) ValidationResult
+        +Level() ValidationLevel
+        +BufferSize() int
+    }
+
+    class ValidationLevel {
+        <<enumeration>>
+        Quick
+        Standard
+        Deep
+    }
+
+    class ValidationResult {
+        +Status ValidationStatus
+        +Message string
+        +TimeTaken time.Duration
+        +BytesRead int64
+    }
+
+    class QuickValidator {
+        -validateMetadata(source, target *FileInfo) bool
+    }
+
+    class StandardValidator {
+        -bufferSize int
+        -validatePartialContent(source, target *FileInfo) bool
+    }
+
+    class DeepValidator {
+        -bufferSize int
+        -validateFullContent(source, target *FileInfo) bool
+    }
+
+    class ValidatorFactory {
+        +NewValidator(level ValidationLevel, opts *ValidatorOptions) Validator
+    }
+
+    Validator <|-- QuickValidator
+    Validator <|-- StandardValidator
+    Validator <|-- DeepValidator
+    ValidatorFactory --> Validator
+    QuickValidator --> ValidationResult
+    StandardValidator --> ValidationResult
+    DeepValidator --> ValidationResult

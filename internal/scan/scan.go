@@ -1,36 +1,42 @@
-// Package scan provides directory traversal and file analysis functionality for backup operations.
+// Package scan provides directory traversal, file analysis, and validation functionality for backup operations.
 //
-// The scanner is designed to optimize disk access patterns by:
+// The scanner is designed with three validation levels:
+// - Quick: File metadata comparison (size, modification time)
+// - Standard: Metadata plus partial content hash (configurable buffer)
+// - Deep: Full file content validation
+//
+// The scanner optimizes disk access patterns by:
 // - Grouping files by directory to minimize disk head movement
 // - Building directory statistics for efficient batch operations
 // - Supporting resumable operations through stateful scanning
 //
 // Key Components:
-// - FileInfo: Individual file metadata including path, size, and modification time
+// - FileInfo: Individual file metadata including path, size, modification time
 // - DirectoryStats: Aggregated directory information including total size and file count
-// - Scanner: Main scanning engine that traverses directories and builds stats
+// - Scanner: Main scanning engine that traverses directories and performs validation
+// - ValidatorStrategy: Interface for different validation levels
 //
 // Usage:
 //
-//	scanner := scan.NewScanner()
-//	err := scanner.Scan("/path/to/source")
-//
-//	// Access directory statistics
-//	for dir, stats := range scanner.GetStats() {
-//	    fmt.Printf("Dir: %s, Files: %d, Size: %d\n",
-//	        dir, stats.FileCount, stats.TotalSize)
+//	opts := &ScannerOptions{
+//	    ExcludePatterns: []string{"*.tmp"},
+//	    IncludeFolders:  []string{"photos", "documents"},
+//	    MaxDepth:        -1,
+//	    BufferSize:      32768,
 //	}
+//	scanner := scan.NewScanner(opts)
+//	progress, err := scanner.Scan("/path/to/source")
 //
 // Performance Considerations:
 // - Groups files by directory to optimize for HDD access patterns
 // - Maintains directory hierarchy for efficient batch operations
+// - Uses configurable validation levels to balance speed vs confidence
 // - Supports incremental scanning for large directories
 //
-// The scanner is particularly optimized for HDDs by minimizing random access
-// and grouping operations by directory to reduce disk head movement.
-// internal/scan/scan.go
-// internal/scan/scan.go
-// internal/scan/scan.go
+// The scanner is particularly optimized for HDDs by:
+// - Minimizing random access through directory grouping
+// - Using configurable buffer sizes for partial hash validation
+// - Supporting staged validation from quick to deep
 package scan
 
 import (
