@@ -88,14 +88,20 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		"hasValidation", cfg.Validation != nil,
 		"hasDefaultLevel", cfg.Validation != nil && cfg.Validation.DefaultLevel != "")
 
+	if cfg.Validation != nil {
+		log.Debugw("Validation config",
+			"default", cfg.Validation.DefaultLevel,
+			"critical", cfg.Validation.CriticalPaths)
+	}
+
 	// Create scanner options from config
 	opts := &scan.ScannerOptions{
-		ExcludePatterns: cfg.Exclude,
-		IncludeFolders:  cfg.Folders,
-		BufferSize:      cfg.Comparison.BufferSize,
-		MaxDepth:        -1,
-		DefaultLevel:    level,
-		//ValidationConfig: cfg.Validation, // Should work now with matching types
+		ExcludePatterns:  cfg.Exclude,
+		IncludeFolders:   cfg.Folders,
+		BufferSize:       cfg.Comparison.BufferSize,
+		MaxDepth:         -1,
+		DefaultLevel:     level,
+		ValidationConfig: cfg.Validation, // Should work now with matching types
 	}
 
 	scanner := scan.NewScanner(opts)
