@@ -20,6 +20,7 @@ type FileInfo struct {
 	IsDir   bool
 	Parent  string
 	Status  FileStatus
+	Level   string // Validation level used
 	Source  *FileInfo
 	Target  *FileInfo
 }
@@ -34,8 +35,10 @@ type DirectoryStats struct {
 
 // FileComparison represents the result of comparing a file between source and target
 type FileComparison struct {
-	Path   string
-	Status FileStatus
-	Source *FileInfo
-	Target *FileInfo
+	Path          string
+	Status        FileStatus
+	Source        *FileInfo
+	Target        *FileInfo
+	Level         string // Validation level used
+	ValidationMsg string // Optional message about validation
 }

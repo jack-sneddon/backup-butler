@@ -29,7 +29,7 @@ func NewStandardValidator(opts *ValidatorOptions) *StandardValidator {
 	return &StandardValidator{opts: opts}
 }
 
-func (v *StandardValidator) Level() ComparisonLevel {
+func (v *StandardValidator) Level() ValidationLevel {
 	return Standard
 }
 

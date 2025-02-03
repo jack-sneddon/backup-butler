@@ -14,7 +14,7 @@ func NewQuickValidator() *QuickValidator {
 	return &QuickValidator{}
 }
 
-func (v *QuickValidator) Level() ComparisonLevel {
+func (v *QuickValidator) Level() ValidationLevel {
 	return Quick
 }
 

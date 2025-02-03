@@ -4,6 +4,8 @@ package config
 import (
 	"fmt"
 	"os"
+
+	"github.com/jack-sneddon/backup-butler/internal/scan"
 )
 
 type Config struct {
@@ -18,6 +20,8 @@ type Config struct {
 		BufferSize int    `yaml:"buffer_size"`
 	} `yaml:"comparison"`
 
+	Validation *scan.ValidationConfig `yaml:"validation"`
+
 	Storage struct {
 		DeviceType string `yaml:"device_type"`
 		MaxThreads int    `yaml:"max_threads"`
@@ -26,6 +30,19 @@ type Config struct {
 	Logging struct {
 		Level string `yaml:"level"`
 	} `yaml:"logging"`
+}
+
+type ValidationConfig struct {
+	DefaultLevel  string         `yaml:"default_level"`
+	OnMismatch    string         `yaml:"on_mismatch"`
+	CriticalPaths []CriticalPath `yaml:"critical_paths,omitempty"`
+	BufferSize    int            `yaml:"buffer_size"`
+	HashAlgorithm string         `yaml:"hash_algorithm"`
+}
+
+type CriticalPath struct {
+	Path  string `yaml:"path"`
+	Level string `yaml:"level"`
 }
 
 var ValidHashAlgorithms = map[string]bool{

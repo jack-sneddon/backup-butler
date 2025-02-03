@@ -51,128 +51,13 @@ Total files: 207,163
 - SHOULD support Windows
 - MUST handle cross-platform paths
 
-## 5. Configuration
+## 5. File Validation and Comparison
 
-### 5.1 Example Configuration
-
-```yaml
-# Backup Butler Configuration
-
-# Core paths
-source: "/Users/media/photos"
-target: "/Volumes/backup/photos"
-
-# Directories to process
-folders:
-  - "2023"
-  - "2024/vacation"
-
-# File patterns to exclude
-exclude:
-  - "*.tmp"
-  - ".DS_Store"
-  - ".Trashes"
-  - "._*" # Mac resource files
-
-# Comparison settings
-comparison:
-  algorithm: "sha256" # md5, sha1, sha256
-  level: "standard" # quick, standard, deep
-  buffer_size: 32768 # 32KB
-
-# Device optimization
-storage:
-  device_type: "hdd" # hdd, ssd
-  max_threads: 4 # conservative for HDDs
-  io_priority: "balanced" # balanced, performance, conservative
-  sequential_threshold: 100 # files before switching to sequential mode
-
-# Progress and checkpointing
-auto_save:
-  enabled: true
-  thresholds:
-    files: 100
-    data: "1GB"
-    time: "5m"
-
-# Platform specific
-platform:
-  paths:
-    windows_separator: "\\"
-    case_sensitive: false # Windows handling
-  encoding: "utf-8"
-
-# Performance tuning
-performance:
-  read_buffer: "32MB"
-  write_buffer: "32MB"
-  batch_size: 100
-  max_retries: 3
-
-# Reporting
-reporting:
-  default_format: "text" # text, csv, html
-  colors: true # Terminal colors
-  progress_interval: "1s" # Progress update frequency
-
-# Version management
-versions:
-  location: ".backup-butler"
-  max_versions: 10
-  cleanup:
-    enabled: true
-    keep_last: 5
-
-# logging level
-logging:
-  level: "debug" # debug, info, warn, error
-```
-
-### 5.2 Configuration Field Definitions
-
-| Field                              | Description                            | Required | Default        |
-| ---------------------------------- | -------------------------------------- | -------- | -------------- |
-| `source`                           | Source directory path                  | Yes      | -              |
-| `target`                           | Backup destination path                | Yes      | -              |
-| `folders`                          | List of subdirectories to backup       | No       | All folders    |
-| `exclude`                          | File patterns to ignore                | No       | Empty          |
-| `comparison.algorithm`             | Hash algorithm (md5/sha1/sha256)       | No       | sha256         |
-| `comparison.level`                 | Validation depth (quick/standard/deep) | No       | standard       |
-| `comparison.buffer_size`           | Read/write buffer size in bytes        | No       | 32768          |
-| `storage.device_type`              | Storage device type (hdd/ssd)          | Yes      | hdd            |
-| `storage.max_threads`              | Maximum concurrent operations          | No       | 4              |
-| `storage.io_priority`              | I/O scheduling priority                | No       | balanced       |
-| `storage.sequential_threshold`     | Files before sequential mode           | No       | 100            |
-| `auto_save.enabled`                | Enable checkpointing                   | No       | true           |
-| `auto_save.thresholds.files`       | Files between saves                    | No       | 100            |
-| `auto_save.thresholds.data`        | Data volume between saves              | No       | 1GB            |
-| `auto_save.thresholds.time`        | Time between saves                     | No       | 5m             |
-| `platform.paths.windows_separator` | Windows path separator                 | No       | \\             |
-| `platform.paths.case_sensitive`    | Case-sensitive paths                   | No       | false          |
-| `platform.encoding`                | File name encoding                     | No       | utf-8          |
-| `performance.read_buffer`          | Read buffer size                       | No       | 32MB           |
-| `performance.write_buffer`         | Write buffer size                      | No       | 32MB           |
-| `performance.batch_size`           | Files per batch                        | No       | 100            |
-| `performance.max_retries`          | Operation retry attempts               | No       | 3              |
-| `reporting.default_format`         | Report format                          | No       | text           |
-| `reporting.colors`                 | Use terminal colors                    | No       | true           |
-| `reporting.progress_interval`      | Progress update frequency              | No       | 1s             |
-| `versions.location`                | Version storage directory              | No       | .backup-butler |
-| `versions.max_versions`            | Maximum versions to keep               | No       | 10             |
-| `versions.cleanup.enabled`         | Enable version cleanup                 | No       | true           |
-| `versions.cleanup.keep_last`       | Versions to retain                     | No       | 5              |
-
-# File Validation Strategy
-
-## Overview
-
-The file validation system ensures data integrity between source and target locations using a tiered approach that balances performance with confidence.
-
-## Configuration
+### 5.1 Validation Strategy
 
 ```yaml
 validation:
-  # Default validation level for all files
+  # Default validation level
   default_level: "quick"      # quick, standard, deep
   
   # Validation level when metadata differs
@@ -200,158 +85,101 @@ validation:
   hash_algorithm: "sha256"   # md5, sha1, sha256
 ```
 
-## Validation Levels
+### 5.2 Validation Levels
 
-### Quick Validation
+#### Quick Validation
 
 - **Purpose**: Fast detection of obvious changes
-- **Checks**:
-  - File size
-  - Modification time (mtime)
-  - File mode/type
+- **Checks**: File size, modification time (mtime), file mode/type
 - **Performance**: ~0.1ms per file
-- **Use Case**: Default for all files
-- **Limitations**:
-  - Misses content changes that preserve metadata
-  - Can miss changes due to timestamp precision
+- **Use Case**: Default for most files
+- **Limitations**: Cannot detect content changes that preserve metadata
 
-### Standard Validation
+#### Standard Validation
 
 - **Purpose**: Balance of performance and integrity
-- **Checks**:
-  - All Quick validation checks
-  - Partial content hash (first 32KB)
+- **Checks**: Quick validation + partial content hash (first 32KB)
 - **Performance**: ~1.9ms per file
-- **Use Case**:
-  - Files that fail Quick validation
-  - Critical paths requiring content verification
-  - When metadata timestamps are unreliable
+- **Use Case**: Files failing quick validation, critical paths
+- **Limitations**: May miss changes in large files beyond first 32KB
 
-### Deep Validation
+#### Deep Validation
 
 - **Purpose**: Complete integrity verification
-- **Checks**:
-  - All Quick validation checks
-  - Full file content hash
-- **Performance**: Proportional to file size (~12s per GB)
-- **Use Case**:
-  - Critical financial/legal documents
-  - Periodic full integrity checks
-  - Initial backup verification
+- **Checks**: Quick validation + full file hash
+- **Performance**: ~12s per GB
+- **Use Case**: Critical files, periodic full verification
+- **Limitations**: Resource intensive, time-consuming
 
-## Validation Algorithm
+### 5.3 Validation Algorithm
 
-```yaml
+```bash
 For each file:
-1. Determine validation level:
-   - Check scheduled deep validation
-   - Check critical path configuration
-   - Use default level if no special cases
+1. Determine validation level based on:
+   - Scheduled deep validation status
+   - Critical path configuration
+   - Default level setting
 
 2. Perform validation:
-   if level == QUICK:
+   QUICK:
      Check metadata
-     if metadata differs && on_mismatch == STANDARD:
+     If differs AND on_mismatch = STANDARD:
        Perform standard validation
-     if metadata differs && on_mismatch == DEEP:
+     If differs AND on_mismatch = DEEP:
        Perform deep validation
 
-   if level == STANDARD:
+   STANDARD:
      Check metadata
      Check first 32KB hash
 
-   if level == DEEP:
+   DEEP:
      Check metadata
      Check full file hash
 
-3. Record validation results:
+3. Record results:
    - Validation level used
    - Time taken
-   - Result status
-   - Bytes read
+   - Status
+   - Bytes processed
 ```
-
-## Metadata Preservation
-
-When copying files, the following metadata must be preserved:
-
-- Modification time (mtime)
-- File mode/permissions
-- File type information
-
-Platform-specific considerations:
-
-- Windows: NTFS timestamps use 100ns precision
-- Unix: Timestamp precision varies by filesystem
-- Cloud: May have limited metadata support
-
-## Performance Characteristics
-
-Theoretical performance for 100MB file:
-
-- Quick: ~0.1ms
-- Standard: ~1.9ms
-- Deep: ~1.2s
-
-For 200,000 files (all 100MB):
-
-- Quick: ~20s
-- Standard: ~6.3m
-- Deep: ~66h
-
-## Implementation Guidelines
-
-1. Use buffered I/O for content reads
-2. Implement filesystem-appropriate caching
-3. Group files by validation level for efficiency
-4. Process files in directory order for HDD optimization
-5. Enable parallel validation for SSD targets
-
-## Critical File Marking
-
-Files can be marked as critical via:
-
-1. Path patterns in config
-2. Directory markers
-3. Explicit file lists
-
-## Dry Run Behavior
-
-- Uses same validation logic
-- Reports potential changes without copying
-- Shows validation level used for each file
-- Estimates time for full sync
-
-## Performance Optimization
-
-1. Parallel validation for SSDs
-2. Sequential validation for HDDs
-3. Batch processing for small files
-4. Caching of previous validation results
 
 ## 6. Command Interface
 
-### 6.1 Check Mode
+### 6.1 Global Commands
+
+```bash
+backup-butler [command] [options]
+
+Commands:
+  check     Compare source and target without copying
+  sync      Synchronize source to target (with copy)
+  backup    Create/update backup with resume capability
+  version   Manage versions and history
+
+Global Options:
+  --config string     Configuration file path
+  --dry-run          Show what would happen without changes
+  --log-level string Log level (debug|info|warn|error)
+```
+
+### 6.2 Check Command
 
 ```bash
 backup-butler check [options]
-  --config string    Configuration file
-  --source string   Source directory
-  --target string   Target directory
+  --level string    Validation level (quick|standard|deep)
   --output string   Report format (text|csv|html)
-  --level string    Check level (quick|standard|deep)
 ```
 
-### 6.2 Backup Mode
+### 6.3 Sync/Backup Commands
 
 ```bash
+backup-butler sync [options]
 backup-butler backup [options]
-  --config string     Configuration file
-  --resume           Resume from last checkpoint
-  --force            Override safety checks
+  --resume          Resume from last checkpoint
+  --force          Override safety checks
 ```
 
-### 6.3 Version Mode
+### 6.4 Version Command
 
 ```bash
 backup-butler version [command]
@@ -362,11 +190,68 @@ Commands:
   size     Show version storage usage
 ```
 
-## 7. Progress Display
+### 6.5 Dry Run Behavior
 
-### 7.1 Real-time Display
+The --dry-run flag:
 
-MUST show:
+- Shows changes without modifying files
+- Performs all configured validation checks
+- Reports validation levels used
+- Estimates time and I/O impact
+- Produces detailed report
+
+## 7. Configuration
+
+### 7.1 Example Configuration
+
+```yaml
+# Core paths
+source: "/Users/media/photos"
+target: "/Volumes/backup/photos"
+
+# Directories to process
+folders:
+  - "2023"
+  - "2024/vacation"
+
+# File patterns to exclude
+exclude:
+  - "*.tmp"
+  - ".DS_Store"
+  - "._*"
+
+# Validation settings as defined in section 5.1
+
+# Device optimization
+storage:
+  device_type: "hdd"  # hdd, ssd
+  max_threads: 4
+  io_priority: "balanced"  # balanced, performance, conservative
+  sequential_threshold: 100
+
+# Progress tracking
+auto_save:
+  enabled: true
+  thresholds:
+    files: 100
+    data: "1GB"
+    time: "5m"
+
+# Platform specific
+platform:
+  paths:
+    windows_separator: "\\"
+    case_sensitive: false
+  encoding: "utf-8"
+
+# Logging
+logging:
+  level: "info"  # debug, info, warn, error
+```
+
+## 8. Progress and Reporting
+
+### 8.1 Real-time Display
 
 ```sh
 Directory: /Photos/Vacation2024
@@ -382,74 +267,53 @@ Statistics:
 └── Total Time: 5m 32s
 ```
 
-### 7.2 Check Report Output
+### 8.2 Validation Report
 
 ```sh
-# Text format
 ./photos/2024/
   = vacation/img001.jpg      [100MB matched]
   + vacation/img002.jpg      [50MB new]
   * vacation/img003.jpg      [75MB changed]
   - vacation/old/img004.jpg  [25MB removed]
   ! vacation/corrupt.jpg     [ERROR: read failed]
+
+Validation Summary:
+├── Quick Checks:   150 files
+├── Standard Checks: 45 files
+├── Deep Checks:     5 files
+└── Total Time:      2m 15s
 ```
 
-## 8. Storage Device Protection
+## 9. Storage Device Protection
 
-### 8.1 HDD Protection Requirements
-
-MUST implement:
+### 9.1 HDD Requirements
 
 - Thread limiting
 - I/O scheduling
 - Sequential access optimization
 - Head movement minimization
 
-### 8.2 Device-Specific Settings
+### 9.2 Performance Optimization
 
-```yaml
-storage:
-  device:
-    type: "hdd"
-    max_concurrent_ops: 4
-    read_buffer: "32MB"
-    write_buffer: "32MB"
-  optimization:
-    mode: "sequential"
-    batch_size: 100
-```
+1. Group files by validation level
+2. Process in directory order
+3. Implement appropriate caching
+4. Enable parallel validation for SSDs
+5. Batch small files
 
-## 9. Metadata Storage
+## 10. State Management
 
-### 9.1 Structure
+### 10.1 Metadata Storage
 
-MUST store in `<target>/.backup-butler/`:
+Store in `<target>/.backup-butler/`:
 
 - Version history
 - File metadata
 - Operation logs
 - Resume state
+- Validation history
 
-### 9.2 Database Support
-
-MAY implement:
-
-- SQLite for local storage
-- PostgreSQL for scalability
-- Version/metadata tables
-- Performance metrics
-
-## 10. Error Recovery
-
-### 10.1 Auto-save Points
-
-MUST save state after:
-
-- Configured number of files processed
-- Specified data volume processed
-- Time interval elapsed
-
-### 10.2 Resume State Format
+### 10.2 Resume State
 
 ```yaml
 resume:
@@ -457,102 +321,64 @@ resume:
   completed_files: 156
   total_files: 200
   last_file: "IMG_4567.jpg"
-  checkpoints:
-    - timestamp: "2025-01-25T14:32:15Z"
-      files_done: 150
+  validation_state:
+    quick_complete: 140
+    standard_complete: 12
+    deep_complete: 4
 ```
 
 ## 11. Testing Strategy
 
-### 11.1 CLI Testing
+### 11.1 Test Categories
 
-MUST implement bash-based testing:
+1. Unit tests for core functionality
+2. Integration tests for command workflow
+3. Performance benchmarks
+4. Cross-platform compatibility
+5. Recovery and resume scenarios
+
+### 11.2 Test Framework
 
 ```bash
 #!/bin/bash
-setup_test_files() {
-  mkdir -p test/source test/target
-  # Create test files
+test_validation() {
+  # Test each validation level
+  test_quick_validation
+  test_standard_validation
+  test_deep_validation
+  test_hybrid_validation
 }
 
-test_backup() {
-  backup-butler backup --config test.yaml
-  verify_results
+test_device_protection() {
+  # Test storage optimizations
+  test_hdd_optimization
+  test_ssd_optimization
 }
 ```
 
-## 12. Logging
+## 12. Future Extensions
 
-### 12.1 library
-
-Use of Uber's zap logger
-
-### 12.2 Logging levels
-
-Log Levels (lowest to highest):
-
-- DEBUG: Verbose information for debugging issues
-- INFO: General operational events
-- WARN: Potentially harmful situations
-- ERROR: Error events that might still allow the application to continue
-- FATAL: Very severe error events that will lead to application termination
-
-### 12.3 setting the logging level
-
-- Default (if not provided) is "ERROR"
-
-- Setting in configuration file
-
-  - example:
-        ```yaml
-        logging:
-        level: "debug"  # debug, info, warn, error
-        ```
-
-- Flag in terminal command
-  - example: $ backup-butler sync -c config.yaml --log-level debug
-
-### Order of precidence
-
-Order:
-
-1. terminal flag
-2. configuration file
-3. default
-
-## 13. Future Extensions
-
-### 13.1 Cloud Storage Support
+### 12.1 Cloud Storage Support
 
 ```yaml
 target:
-  # AWS S3
   type: "s3"
   bucket: "media-backup"
   region: "us-west-2"
-
-  # NAS
-  type: "nas"
-  protocol: "smb"
-  path: "//server/share"
 ```
 
-### 13.2 Cloud Requirements
+### 12.2 Database Integration
 
-MUST implement:
-
-- Concurrent uploads
-- Chunked transfers
-- Resume capability
-- Bandwidth control
+- SQLite for local storage
+- PostgreSQL for scalability
+- Performance metrics
+- Validation history
 
 ## 13. Success Criteria
-
-MUST meet:
 
 - Zero data loss
 - Accurate reporting
 - Resumable operations
-- Performance targets
-- Device protection
+- Performance targets met
+- Device protection verified
 - Clear error handling

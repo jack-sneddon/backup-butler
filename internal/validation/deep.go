@@ -25,7 +25,7 @@ func NewDeepValidator(opts *ValidatorOptions) *DeepValidator {
 	return &DeepValidator{opts: opts}
 }
 
-func (v *DeepValidator) Level() ComparisonLevel {
+func (v *DeepValidator) Level() ValidationLevel {
 	return Deep
 }
 

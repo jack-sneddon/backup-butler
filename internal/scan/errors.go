@@ -30,10 +30,26 @@ func NewScanError(path string, op string, err error) *ScanError {
 
 // Scanner configuration options
 type ScannerOptions struct {
-	ExcludePatterns []string
-	IncludeFolders  []string
-	MaxDepth        int
-	BufferSize      int
+	ExcludePatterns  []string
+	IncludeFolders   []string
+	MaxDepth         int
+	BufferSize       int
+	DefaultLevel     string
+	CriticalPaths    []CriticalPath
+	ValidationConfig *ValidationConfig
+}
+
+type ValidationConfig struct {
+	DefaultLevel  string         `yaml:"default_level"`
+	OnMismatch    string         `yaml:"on_mismatch"`
+	CriticalPaths []CriticalPath `yaml:"critical_paths,omitempty"`
+	BufferSize    int            `yaml:"buffer_size"`
+	HashAlgorithm string         `yaml:"hash_algorithm"`
+}
+
+type CriticalPath struct {
+	Path  string `yaml:"path"`
+	Level string `yaml:"level"`
 }
 
 // Enhanced Progress tracking
@@ -92,25 +108,26 @@ func matchesPattern(path string, patterns []string) bool {
 		return false
 	}
 
-	filename := filepath.Base(path)
+	// Get the path relative to the scanning root
 	logger.Get().Debugw("Checking pattern match",
 		"path", path,
-		"filename", filename,
 		"patterns", patterns)
 
 	for _, pattern := range patterns {
-		matched, err := filepath.Match(pattern, filename)
+		// Convert pattern into filepath-compatible format
+		pattern = filepath.FromSlash(pattern)
+		matched, err := filepath.Match(pattern, path)
 		if err != nil {
 			logger.Get().Debugw("Pattern match error",
 				"pattern", pattern,
-				"filename", filename,
+				"path", path,
 				"error", err)
 			continue
 		}
 		if matched {
 			logger.Get().Debugw("Pattern matched",
 				"pattern", pattern,
-				"filename", filename)
+				"path", path)
 			return true
 		}
 	}

@@ -38,16 +38,8 @@ Validation levels:
 	return cmd
 }
 
-// internal/commands/check/check.go
-
 func runCheck(cmd *cobra.Command, args []string) error {
 	log := logger.Get()
-
-	// Get validation level
-	level, _ := cmd.Flags().GetString("level")
-	if !isValidLevel(level) {
-		return fmt.Errorf("invalid validation level: %s", level)
-	}
 
 	cfgFile := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 	log.Debugw("Loading config", "file", cfgFile)
@@ -64,12 +56,46 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		"includeFolders", cfg.Folders,
 		"logging", cfg.Logging)
 
+	// Get validation level (prefer config unless overridden by command line)
+	var level string
+
+	// 1. Get default from config if available
+	if cfg.Validation != nil && cfg.Validation.DefaultLevel != "" {
+		level = cfg.Validation.DefaultLevel
+		log.Debugw("Using config validation level", "level", level)
+	}
+
+	// 2. Check command line flag
+	cmdLevel, _ := cmd.Flags().GetString("level")
+	if cmdLevel != "" {
+		level = cmdLevel
+		log.Debugw("Overriding with command line level", "level", level)
+	}
+
+	// 3. Set standard as default if neither is specified
+	if level == "" {
+		level = string(Standard)
+		log.Debugw("Using default validation level", "level", level)
+	}
+
+	// 4. Validate the final level
+	if !isValidLevel(level) {
+		return fmt.Errorf("invalid validation level: %s", level)
+	}
+
+	log.Debugw("Final validation level set",
+		"level", level,
+		"hasValidation", cfg.Validation != nil,
+		"hasDefaultLevel", cfg.Validation != nil && cfg.Validation.DefaultLevel != "")
+
 	// Create scanner options from config
 	opts := &scan.ScannerOptions{
 		ExcludePatterns: cfg.Exclude,
 		IncludeFolders:  cfg.Folders,
 		BufferSize:      cfg.Comparison.BufferSize,
-		MaxDepth:        -1, // No depth limit by default
+		MaxDepth:        -1,
+		DefaultLevel:    level,
+		//ValidationConfig: cfg.Validation, // Should work now with matching types
 	}
 
 	scanner := scan.NewScanner(opts)
@@ -171,7 +197,12 @@ func printResults(comparisons []*scan.FileComparison) {
 		case scan.StatusError:
 			errors++
 		}
-		fmt.Printf("    %c %s\n", comp.Status, comp.Path)
+		// Add validation level to output
+		levelStr := ""
+		if comp.Level != "" {
+			levelStr = fmt.Sprintf(" [%s]", comp.Level)
+		}
+		fmt.Printf("    %c %s%s\n", comp.Status, comp.Path, levelStr)
 	}
 
 	// Print statistics

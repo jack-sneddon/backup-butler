@@ -61,10 +61,19 @@ type Scanner struct {
 func NewScanner(options *ScannerOptions) *Scanner {
 	if options == nil {
 		options = &ScannerOptions{
-			MaxDepth:   -1, // No limit by default
-			BufferSize: 32768,
+			MaxDepth:     -1,
+			BufferSize:   32768,
+			DefaultLevel: "standard", // Default if not specified
 		}
 	}
+
+	// Set validation defaults if not provided
+	if options.ValidationConfig == nil {
+		options.ValidationConfig = &ValidationConfig{
+			DefaultLevel: "standard",
+		}
+	}
+
 	return &Scanner{
 		stats:    make(map[string]*DirectoryStats),
 		log:      logger.Get(),
@@ -140,8 +149,16 @@ func (s *Scanner) countFiles(root string) error {
 					s.progress.ExcludedDirs++
 					return filepath.SkipDir
 				}
-				if matchesPattern(path, s.opts.ExcludePatterns) {
-					s.log.Debugw("Excluding directory by pattern", "path", path)
+				// Get relative path for directory
+				relPath, err := filepath.Rel(absRoot, path)
+				if err != nil {
+					s.progress.AddError(NewScanError(path, "rel_path", err))
+					return nil
+				}
+				if matchesPattern(relPath, s.opts.ExcludePatterns) {
+					s.log.Debugw("Excluding directory by pattern",
+						"path", path,
+						"relPath", relPath)
 					s.progress.ExcludedDirs++
 					return filepath.SkipDir
 				}
@@ -152,17 +169,23 @@ func (s *Scanner) countFiles(root string) error {
 
 		// Handle files
 		if len(s.opts.ExcludePatterns) > 0 {
+			relPath, err := filepath.Rel(absRoot, path)
+			if err != nil {
+				s.progress.AddError(NewScanError(path, "rel_path", err))
+				return nil
+			}
 			s.log.Debugw("Checking file against patterns",
-				"filename", filepath.Base(path),
+				"relPath", relPath,
 				"patterns", s.opts.ExcludePatterns)
-		}
 
-		if shouldExclude := matchesPattern(path, s.opts.ExcludePatterns); shouldExclude {
-			s.log.Debugw("Excluding file by pattern",
-				"path", path,
-				"patterns", s.opts.ExcludePatterns)
-			s.progress.ExcludedFiles++
-			return nil
+			if shouldExclude := matchesPattern(relPath, s.opts.ExcludePatterns); shouldExclude {
+				s.log.Debugw("Excluding file by pattern",
+					"path", path,
+					"relPath", relPath,
+					"patterns", s.opts.ExcludePatterns)
+				s.progress.ExcludedFiles++
+				return nil
+			}
 		}
 
 		// Include the file in totals
@@ -211,7 +234,13 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 				if !shouldIncludeFolder(path, s.opts.IncludeFolders) {
 					continue
 				}
-				if matchesPattern(path, s.opts.ExcludePatterns) {
+				// Get relative path for directory
+				relPath, err := filepath.Rel(absRoot, path)
+				if err != nil {
+					s.progress.AddError(NewScanError(path, "rel_path", err))
+					continue
+				}
+				if matchesPattern(relPath, s.opts.ExcludePatterns) {
 					continue
 				}
 			}
@@ -221,7 +250,14 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 			continue
 		}
 
-		if matchesPattern(path, s.opts.ExcludePatterns) {
+		// Get relative path for file
+		relPath, err := filepath.Rel(absRoot, path)
+		if err != nil {
+			s.progress.AddError(NewScanError(path, "rel_path", err))
+			continue
+		}
+
+		if matchesPattern(relPath, s.opts.ExcludePatterns) {
 			continue
 		}
 
@@ -242,6 +278,7 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 			IsDir:   info.IsDir(),
 			Parent:  parent,
 		})
+
 		s.mu.Unlock()
 
 		s.progress.ScannedFiles++

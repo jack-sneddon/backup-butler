@@ -8,6 +8,20 @@ import (
 	"github.com/jack-sneddon/backup-butler/internal/scan"
 )
 
+// CriticalPath defines special validation requirements for specific paths
+type CriticalPath struct {
+	Path  string `yaml:"path"`
+	Level string `yaml:"level"`
+}
+
+type ValidationLevel string
+
+const (
+	Quick    ValidationLevel = "quick"
+	Standard ValidationLevel = "standard"
+	Deep     ValidationLevel = "deep"
+)
+
 // Error definitions
 var (
 	ErrInvalidComparisonLevel = errors.New("invalid comparison level")
@@ -17,8 +31,8 @@ var (
 
 // Validation constants
 const (
-	MinBufferSize = 4096     // 4KB minimum
-	MaxBufferSize = 10485760 // 10MB maximum
+	MinBufferSize = 4096
+	MaxBufferSize = 10485760
 )
 
 // Supported hash algorithms
@@ -33,13 +47,65 @@ type ComparisonStrategy interface {
 	// Compare checks equality between source and target files
 	Compare(source, target *scan.FileInfo) ComparisonResult
 	// Level returns the comparison level used
-	Level() ComparisonLevel
+	Level() ValidationLevel
 }
 
 // ValidatorOptions contains configuration for validators
 type ValidatorOptions struct {
 	BufferSize int    // Size of read buffer for content validation
 	Algorithm  string // Hash algorithm (e.g., "sha256")
+}
+
+// ComparisonResult contains the outcome of a comparison operation
+type ComparisonResult struct {
+	Equal     bool
+	Reason    string
+	TimeTaken time.Duration
+	BytesRead int64
+}
+
+// ValidationResult combines comparison results with validation status
+type ValidationResult struct {
+	Comparison  ComparisonResult
+	RulesPassed bool
+	Level       ValidationLevel
+	Messages    []string
+}
+
+// FileValidator combines comparison and validation logic
+type FileValidator struct {
+	strategy ComparisonStrategy
+	rules    ValidationRules
+	stats    *ValidationStats
+}
+
+// ValidationRules defines integrity requirements
+type ValidationRules struct {
+	CriticalPaths []CriticalPathRule
+	OnMismatch    ValidationLevel
+	ScheduledDeep *ScheduledValidation
+}
+
+type CriticalPathRule struct {
+	Pattern string
+	Level   ValidationLevel
+}
+
+type ScheduledValidation struct {
+	Enabled   bool
+	Frequency string
+	LastRun   time.Time
+	Paths     []string
+	Exclude   []string
+}
+
+// ValidationStats tracks validation metrics
+type ValidationStats struct {
+	QuickChecks    int
+	StandardChecks int
+	DeepChecks     int
+	StartTime      time.Time
+	EndTime        time.Time
 }
 
 func (opts *ValidatorOptions) Validate() error {
@@ -57,67 +123,7 @@ func (opts *ValidatorOptions) Validate() error {
 }
 
 // ComparisonLevel indicates how thorough the comparison should be
-type ComparisonLevel string
-
-const (
-	Quick    ComparisonLevel = "quick"
-	Standard ComparisonLevel = "standard"
-	Deep     ComparisonLevel = "deep"
-)
-
-// ComparisonResult contains the outcome of a comparison operation
-type ComparisonResult struct {
-	Equal     bool
-	Reason    string
-	TimeTaken time.Duration
-	BytesRead int64
-}
-
-// ValidationResult combines comparison results with validation status
-type ValidationResult struct {
-	Comparison  ComparisonResult
-	RulesPassed bool
-	Level       ComparisonLevel
-	Messages    []string
-}
-
-// FileValidator combines comparison and validation logic
-type FileValidator struct {
-	strategy ComparisonStrategy
-	rules    ValidationRules
-	stats    *ValidationStats
-}
-
-// ValidationRules defines integrity requirements
-type ValidationRules struct {
-	CriticalPaths []CriticalPath
-	OnMismatch    ComparisonLevel
-	ScheduledDeep *ScheduledValidation
-}
-
-// CriticalPath defines special validation requirements for specific paths
-type CriticalPath struct {
-	Pattern string
-	Level   ComparisonLevel
-}
-
-// ScheduledValidation defines periodic deep validation requirements
-type ScheduledValidation struct {
-	Enabled   bool
-	Frequency string
-	LastRun   time.Time
-	Paths     []string
-	Exclude   []string
-}
-
-// ValidationStats tracks validation metrics
-type ValidationStats struct {
-	QuickChecks    int
-	StandardChecks int
-	DeepChecks     int
-	StartTime      time.Time
-	EndTime        time.Time
-}
+//type ComparisonLevel string
 
 // NewFileValidator creates a new validator with specified strategy and rules
 func NewFileValidator(strategy ComparisonStrategy, rules ValidationRules) *FileValidator {
@@ -170,7 +176,7 @@ func (v *FileValidator) Validate(source, target *scan.FileInfo) ValidationResult
 	}
 }
 
-func (v *FileValidator) determineComparisonLevel(path string) ComparisonLevel {
+func (v *FileValidator) determineComparisonLevel(path string) ValidationLevel {
 	// Check scheduled deep validation
 	if v.shouldPerformScheduledDeep(path) {
 		return Deep
@@ -198,7 +204,7 @@ func (v *FileValidator) shouldPerformScheduledDeep(path string) bool {
 }
 
 // getCriticalPathLevel checks if path matches any critical path patterns
-func (v *FileValidator) getCriticalPathLevel(path string) ComparisonLevel {
+func (v *FileValidator) getCriticalPathLevel(path string) ValidationLevel {
 	// Implementation would use path matching against rules.CriticalPaths
 	// For now, return empty as placeholder
 	return ""
@@ -218,7 +224,7 @@ func (v *FileValidator) GetStats() ValidationStats {
 }
 
 // NewStrategy creates a comparison strategy for the specified level
-func NewStrategy(level ComparisonLevel, opts *ValidatorOptions) ComparisonStrategy {
+func NewStrategy(level ValidationLevel, opts *ValidatorOptions) ComparisonStrategy {
 	switch level {
 	case Quick:
 		return NewQuickValidator()
