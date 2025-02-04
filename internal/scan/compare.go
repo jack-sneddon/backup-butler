@@ -116,6 +116,16 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 
 func (s *Scanner) determineValidationLevel(path string) string {
 	if s.opts.ValidationConfig != nil && s.opts.ValidationConfig.CriticalPaths != nil {
+		s.log.Debugw("compare.go:determineValidationLevel() Validation config in determineValidationLevel",
+			"hasConfig", s.opts.ValidationConfig != nil,
+			"criticalPaths", s.opts.ValidationConfig.CriticalPaths,
+			"path", path)
+
+		s.log.Debugw("compare.go:determineValidationLevel() Checking critical paths",
+			"configLevel", s.opts.ValidationConfig.DefaultLevel,
+			"criticalPaths", s.opts.ValidationConfig.CriticalPaths,
+			"onMismatch", s.opts.ValidationConfig.OnMismatch)
+
 		for _, cp := range s.opts.ValidationConfig.CriticalPaths {
 			matched, err := filepath.Match(cp.Path, path) // Changed from Pattern to Path
 			if err == nil && matched {
@@ -126,7 +136,10 @@ func (s *Scanner) determineValidationLevel(path string) string {
 				return cp.Level
 			}
 		}
+	} else {
+		s.log.Debugw("comopare.go::determineValidationLevel - No validation config found")
 	}
+
 	// Return the default validation level
 	s.log.Debugw("Using default validation level",
 		"path", path,

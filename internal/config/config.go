@@ -32,18 +32,21 @@ type Config struct {
 	} `yaml:"logging"`
 }
 
+/*
 type ValidationConfig struct {
 	DefaultLevel  string         `yaml:"default_level"`
 	OnMismatch    string         `yaml:"on_mismatch"`
-	CriticalPaths []CriticalPath `yaml:"critical_paths,omitempty"`
+	CriticalPaths []CriticalPath `yaml:"critical_paths"`
 	BufferSize    int            `yaml:"buffer_size"`
 	HashAlgorithm string         `yaml:"hash_algorithm"`
 }
+
 
 type CriticalPath struct {
 	Path  string `yaml:"path"`
 	Level string `yaml:"level"`
 }
+*/
 
 var ValidHashAlgorithms = map[string]bool{
 	"md5":    true,

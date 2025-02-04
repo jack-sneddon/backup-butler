@@ -49,6 +49,14 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if cfg.Validation != nil {
+		log.Debugw("check.go::runCheck - Config after loading",
+			"validation", cfg.Validation,
+			"criticalPaths", cfg.Validation.CriticalPaths)
+	} else {
+		log.Debugw("check.go::runCheck - No validation config found")
+	}
+
 	log.Debugw("Config loaded",
 		"source", cfg.Source,
 		"target", cfg.Target,
@@ -63,6 +71,12 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	if cfg.Validation != nil && cfg.Validation.DefaultLevel != "" {
 		level = cfg.Validation.DefaultLevel
 		log.Debugw("Using config validation level", "level", level)
+		log.Debugw("check.go::runCheck - Config after loading",
+			"validation", cfg.Validation,
+			"criticalPaths", cfg.Validation.CriticalPaths)
+
+	} else {
+		log.Debugw("check.go::runCheck - No validation config found")
 	}
 
 	// 2. Check command line flag
@@ -101,8 +115,12 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		BufferSize:       cfg.Comparison.BufferSize,
 		MaxDepth:         -1,
 		DefaultLevel:     level,
-		ValidationConfig: cfg.Validation, // Should work now with matching types
+		ValidationConfig: cfg.Validation,
 	}
+
+	log.Debugw("check.go:runCheck() - Scanner options created",
+		"validationConfig", opts.ValidationConfig,
+		"criticalPaths", opts.ValidationConfig != nil && opts.ValidationConfig.CriticalPaths != nil)
 
 	scanner := scan.NewScanner(opts)
 

@@ -147,11 +147,11 @@ target: "${TEST_DIR}-target"
 validation:
   default_level: "quick"
   on_mismatch: "standard"
+  buffer_size: 32768
+  hash_algorithm: "sha256"
   critical_paths:
     - path: "critical/*"
       level: "deep"
-  buffer_size: 32768
-  hash_algorithm: "sha256"
 exclude:
   - "config/*"
   - "*.tmp"
@@ -164,7 +164,6 @@ test_quick_comparison() {
     
     # Test identical files
     printf "  Testing identical files... "
-    # output=$(./bin/backup-butler check -c "${TEST_DIR}/config/config_quick.yaml" 2>&1)
     output=$(run_backup_butler check -c "${TEST_DIR}/config/config_quick.yaml" 2>&1)
     if [[ $output =~ "identical/same1.dat" && $output =~ "=" ]]; then
         printf "${GREEN}PASS${NC}\n"
@@ -274,7 +273,6 @@ test_deep_comparison() {
     printf "Testing deep comparison...\n"
     
     printf "  Testing full content verification... "
-    # output=$(./bin/backup-butler check -c "${TEST_DIR}/config/config_deep.yaml" 2>&1)
     output=$(run_backup_butler check -c "${TEST_DIR}/config/config_deep.yaml" 2>&1)
     if [[ $output =~ "content/partial.dat" && $output =~ "*" ]]; then
         printf "${GREEN}PASS${NC}\n"
@@ -299,20 +297,22 @@ test_deep_comparison() {
 test_hybrid_validation() {
     printf "Testing hybrid validation...\n"
     
+    printf "Using config file: ${TEST_DIR}/config/config_hybrid.yaml\n"
+    cat "${TEST_DIR}/config/config_hybrid.yaml"
+
     output=$(run_backup_butler check -c "${TEST_DIR}/config/config_hybrid.yaml" 2>&1)
     
+    # Debug: Print relevant lines for validation levels
+    printf "Found validation levels:\n"
+    echo "$output" | grep -E "\[(quick|standard|deep)\]"
+
     # Quick should escalate to standard on mismatch
     printf "  Testing validation escalation... "
-    if [[ $output =~ "content/diff_content.dat.*\[standard\]" ]]; then
+    if [[ $output =~ "content/diff_content.dat.*\[standard\]" ]] || [[ $output =~ "\* content/diff_content.dat.*\[standard\]" ]]; then
         printf "${GREEN}PASS${NC}\n"
-        if $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
     else
         printf "${RED}FAIL${NC}\n"
+        printf "Expected content/diff_content.dat with [standard] validation\n"
         if ! $VERBOSE; then
             echo "Command output:"
             echo "-------------"
@@ -326,14 +326,9 @@ test_hybrid_validation() {
     printf "  Testing critical path rules... "
     if [[ $output =~ "critical/important.dat.*\[deep\]" ]]; then
         printf "${GREEN}PASS${NC}\n"
-        if $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
     else
         printf "${RED}FAIL${NC}\n"
+        printf "Expected critical/important.dat with [deep] validation\n"
         if ! $VERBOSE; then
             echo "Command output:"
             echo "-------------"
@@ -347,14 +342,9 @@ test_hybrid_validation() {
     printf "  Testing default validation level... "
     if [[ $output =~ "identical/same1.dat.*\[quick\]" ]]; then
         printf "${GREEN}PASS${NC}\n"
-        if $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
     else
         printf "${RED}FAIL${NC}\n"
+        printf "Expected identical/same1.dat with [quick] validation\n"
         if ! $VERBOSE; then
             echo "Command output:"
             echo "-------------"
