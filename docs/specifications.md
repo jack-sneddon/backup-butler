@@ -63,13 +63,6 @@ validation:
   # Validation level when metadata differs
   on_mismatch: "standard"     # none, standard, deep
   
-  # Critical paths requiring stronger validation
-  critical_paths:
-    - path: "/financial/**"
-      level: "deep"
-    - path: "/photos/**"
-      level: "standard"
-  
   # Scheduled deep validation
   scheduled_deep:
     enabled: true
@@ -100,7 +93,7 @@ validation:
 - **Purpose**: Balance of performance and integrity
 - **Checks**: Quick validation + partial content hash (first 32KB)
 - **Performance**: ~1.9ms per file
-- **Use Case**: Files failing quick validation, critical paths
+- **Use Case**: Files failing quick validation
 - **Limitations**: May miss changes in large files beyond first 32KB
 
 #### Deep Validation
@@ -108,7 +101,7 @@ validation:
 - **Purpose**: Complete integrity verification
 - **Checks**: Quick validation + full file hash
 - **Performance**: ~12s per GB
-- **Use Case**: Critical files, periodic full verification
+- **Use Case**: periodic full verification
 - **Limitations**: Resource intensive, time-consuming
 
 ### 5.3 Validation Algorithm
@@ -117,7 +110,6 @@ validation:
 For each file:
 1. Determine validation level based on:
    - Scheduled deep validation status
-   - Critical path configuration
    - Default level setting
 
 2. Perform validation:

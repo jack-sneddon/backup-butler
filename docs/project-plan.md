@@ -31,7 +31,6 @@ Checkpoint: Can list and filter files correctly
 
 ### Week 2: Advanced Features
 
-- [ ] Implement critical path matching
 - [ ] Add scheduled validation support
 - [ ] Create validation history storage
 - [ ] Implement smart validation routing

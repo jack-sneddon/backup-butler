@@ -182,11 +182,6 @@ func (v *FileValidator) determineComparisonLevel(path string) ValidationLevel {
 		return Deep
 	}
 
-	// Check critical paths
-	if level := v.getCriticalPathLevel(path); level != "" {
-		return level
-	}
-
 	// Use strategy's default level
 	return v.strategy.Level()
 }

@@ -136,10 +136,12 @@ func (s *Scanner) countFiles(root string) error {
 			return nil // Continue despite errors
 		}
 
-		s.log.Debugw("Processing path",
-			"path", path,
-			"isDir", info.IsDir(),
-			"root", absRoot)
+		/*
+			s.log.Debugw("Processing path",
+				"path", path,
+				"isDir", info.IsDir(),
+				"root", absRoot)
+		*/
 
 		if info.IsDir() {
 			// Skip directory pattern checks for root
@@ -174,15 +176,19 @@ func (s *Scanner) countFiles(root string) error {
 				s.progress.AddError(NewScanError(path, "rel_path", err))
 				return nil
 			}
-			s.log.Debugw("Checking file against patterns",
-				"relPath", relPath,
-				"patterns", s.opts.ExcludePatterns)
-
-			if shouldExclude := matchesPattern(relPath, s.opts.ExcludePatterns); shouldExclude {
-				s.log.Debugw("Excluding file by pattern",
-					"path", path,
+			/*
+				s.log.Debugw("Checking file against patterns",
 					"relPath", relPath,
 					"patterns", s.opts.ExcludePatterns)
+			*/
+
+			if shouldExclude := matchesPattern(relPath, s.opts.ExcludePatterns); shouldExclude {
+				/*
+					s.log.Debugw("Excluding file by pattern",
+						"path", path,
+						"relPath", relPath,
+						"patterns", s.opts.ExcludePatterns)
+				*/
 				s.progress.ExcludedFiles++
 				return nil
 			}
@@ -191,11 +197,13 @@ func (s *Scanner) countFiles(root string) error {
 		// Include the file in totals
 		s.progress.TotalFiles++
 		s.progress.TotalBytes += info.Size()
-		s.log.Debugw("Including file",
-			"path", path,
-			"size", info.Size(),
-			"totalFiles", s.progress.TotalFiles,
-			"totalBytes", s.progress.TotalBytes)
+		/*
+			s.log.Debugw("Including file",
+				"path", path,
+				"size", info.Size(),
+				"totalFiles", s.progress.TotalFiles,
+				"totalBytes", s.progress.TotalBytes)
+		*/
 
 		return nil
 	})

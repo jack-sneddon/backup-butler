@@ -48,11 +48,9 @@ setup_test_env() {
     mkdir -p "$TEST_DIR/identical" \
              "$TEST_DIR/metadata" \
              "$TEST_DIR/content" \
-             "$TEST_DIR/critical" \
              "$TEST_DIR-target/identical" \
              "$TEST_DIR-target/metadata" \
              "$TEST_DIR-target/content" \
-             "$TEST_DIR-target/critical" \
              "$TEST_DIR/config"
 
     if $VERBOSE; then
@@ -89,10 +87,6 @@ setup_test_env() {
     dd if=/dev/urandom of="$TEST_DIR/content/partial.dat" bs=1M count=2 2>/dev/null
     cp "$TEST_DIR/content/partial.dat" "$TEST_DIR-target/content/"
     dd if=/dev/urandom of="$TEST_DIR-target/content/partial.dat" bs=1M count=2 seek=1 conv=notrunc 2>/dev/null
-
-    # 4. Create critical path files
-    dd if=/dev/urandom of="$TEST_DIR/critical/important.dat" bs=1M count=1 2>/dev/null
-    cp "$TEST_DIR/critical/important.dat" "$TEST_DIR-target/critical/"
 
     if $VERBOSE; then
         printf "  Creating test configurations:\n"
@@ -141,22 +135,6 @@ exclude:
   - "*.bak"
 EOL
 
- cat > "${TEST_DIR}/config/config_hybrid.yaml" << EOL
-source: "${TEST_DIR}"
-target: "${TEST_DIR}-target"
-validation:
-  default_level: "quick"
-  on_mismatch: "standard"
-  buffer_size: 32768
-  hash_algorithm: "sha256"
-  critical_paths:
-    - path: "critical/*"
-      level: "deep"
-exclude:
-  - "config/*"
-  - "*.tmp"
-  - "*.bak"
-EOL
 }
 
 test_quick_comparison() {
@@ -294,68 +272,6 @@ test_deep_comparison() {
     return 0
 }
 
-test_hybrid_validation() {
-    printf "Testing hybrid validation...\n"
-    
-    printf "Using config file: ${TEST_DIR}/config/config_hybrid.yaml\n"
-    cat "${TEST_DIR}/config/config_hybrid.yaml"
-
-    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_hybrid.yaml" 2>&1)
-    
-    # Debug: Print relevant lines for validation levels
-    printf "Found validation levels:\n"
-    echo "$output" | grep -E "\[(quick|standard|deep)\]"
-
-    # Quick should escalate to standard on mismatch
-    printf "  Testing validation escalation... "
-    if [[ $output =~ "content/diff_content.dat.*\[standard\]" ]] || [[ $output =~ "\* content/diff_content.dat.*\[standard\]" ]]; then
-        printf "${GREEN}PASS${NC}\n"
-    else
-        printf "${RED}FAIL${NC}\n"
-        printf "Expected content/diff_content.dat with [standard] validation\n"
-        if ! $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
-        return 1
-    fi
-
-    # Critical paths should use deep validation
-    printf "  Testing critical path rules... "
-    if [[ $output =~ "critical/important.dat.*\[deep\]" ]]; then
-        printf "${GREEN}PASS${NC}\n"
-    else
-        printf "${RED}FAIL${NC}\n"
-        printf "Expected critical/important.dat with [deep] validation\n"
-        if ! $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
-        return 1
-    fi
-
-    # Regular files should use quick validation
-    printf "  Testing default validation level... "
-    if [[ $output =~ "identical/same1.dat.*\[quick\]" ]]; then
-        printf "${GREEN}PASS${NC}\n"
-    else
-        printf "${RED}FAIL${NC}\n"
-        printf "Expected identical/same1.dat with [quick] validation\n"
-        if ! $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
-        return 1
-    fi
-
-    return 0
-}
 
 main() {
     local failed=0
@@ -366,7 +282,6 @@ main() {
     test_quick_comparison || failed=1
     test_standard_comparison || failed=1
     test_deep_comparison || failed=1
-    test_hybrid_validation || failed=1
 
     rm -rf "$TEST_ROOT"
 

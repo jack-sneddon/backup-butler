@@ -35,21 +35,14 @@ type ScannerOptions struct {
 	MaxDepth         int
 	BufferSize       int
 	DefaultLevel     string
-	CriticalPaths    []CriticalPath
 	ValidationConfig *ValidationConfig
 }
 
 type ValidationConfig struct {
-	DefaultLevel  string         `yaml:"default_level"`
-	OnMismatch    string         `yaml:"on_mismatch"`
-	CriticalPaths []CriticalPath `yaml:"critical_paths,omitempty"`
-	BufferSize    int            `yaml:"buffer_size"`
-	HashAlgorithm string         `yaml:"hash_algorithm"`
-}
-
-type CriticalPath struct {
-	Path  string `yaml:"path"`
-	Level string `yaml:"level"`
+	DefaultLevel  string `yaml:"default_level"`
+	OnMismatch    string `yaml:"on_mismatch"`
+	BufferSize    int    `yaml:"buffer_size"`
+	HashAlgorithm string `yaml:"hash_algorithm"`
 }
 
 // Enhanced Progress tracking
@@ -109,9 +102,11 @@ func matchesPattern(path string, patterns []string) bool {
 	}
 
 	// Get the path relative to the scanning root
-	logger.Get().Debugw("Checking pattern match",
-		"path", path,
-		"patterns", patterns)
+	/*
+		logger.Get().Debugw("Checking pattern match",
+			"path", path,
+			"patterns", patterns)
+	*/
 
 	for _, pattern := range patterns {
 		// Convert pattern into filepath-compatible format
@@ -125,9 +120,11 @@ func matchesPattern(path string, patterns []string) bool {
 			continue
 		}
 		if matched {
-			logger.Get().Debugw("Pattern matched",
-				"pattern", pattern,
-				"path", path)
+			/*
+				logger.Get().Debugw("Pattern matched",
+					"pattern", pattern,
+					"path", path)
+			*/
 			return true
 		}
 	}

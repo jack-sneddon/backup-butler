@@ -71,7 +71,17 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 
 			if tf := findFile(targetStats, targetPath); tf != nil {
 				comp.Target = tf
-				comp.Status = s.compareFiles(file, tf)
+				if s.opts.ValidationConfig != nil && s.opts.ValidationConfig.OnMismatch != "" {
+					comp.Status = s.compareFiles(file, tf)
+					if comp.Status == StatusDiffer {
+						comp.Level = s.opts.ValidationConfig.OnMismatch
+						s.log.Debugw("Escalating validation due to mismatch",
+							"path", file.Path,
+							"escalatedLevel", s.opts.ValidationConfig.OnMismatch)
+					}
+				} else {
+					comp.Status = s.compareFiles(file, tf)
+				}
 			} else {
 				comp.Status = StatusNew
 			}
@@ -115,31 +125,6 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 }
 
 func (s *Scanner) determineValidationLevel(path string) string {
-	if s.opts.ValidationConfig != nil && s.opts.ValidationConfig.CriticalPaths != nil {
-		s.log.Debugw("compare.go:determineValidationLevel() Validation config in determineValidationLevel",
-			"hasConfig", s.opts.ValidationConfig != nil,
-			"criticalPaths", s.opts.ValidationConfig.CriticalPaths,
-			"path", path)
-
-		s.log.Debugw("compare.go:determineValidationLevel() Checking critical paths",
-			"configLevel", s.opts.ValidationConfig.DefaultLevel,
-			"criticalPaths", s.opts.ValidationConfig.CriticalPaths,
-			"onMismatch", s.opts.ValidationConfig.OnMismatch)
-
-		for _, cp := range s.opts.ValidationConfig.CriticalPaths {
-			matched, err := filepath.Match(cp.Path, path) // Changed from Pattern to Path
-			if err == nil && matched {
-				s.log.Debugw("Using critical path validation level",
-					"path", path,
-					"pattern", cp.Path, // Changed from Pattern to Path
-					"level", cp.Level)
-				return cp.Level
-			}
-		}
-	} else {
-		s.log.Debugw("comopare.go::determineValidationLevel - No validation config found")
-	}
-
 	// Return the default validation level
 	s.log.Debugw("Using default validation level",
 		"path", path,
@@ -166,7 +151,7 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo) FileStatus {
 			s.log.Debugw("Escalating validation due to mismatch",
 				"path", src.Path,
 				"escalatedLevel", s.opts.ValidationConfig.OnMismatch)
-			src.Level = s.opts.ValidationConfig.OnMismatch
+			//comp.Level = s.opts.ValidationConfig.OnMismatch
 		}
 		return StatusDiffer
 	}
@@ -175,7 +160,6 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo) FileStatus {
 		s.log.Debugw("Hash error", "path", src.Path, "error", err)
 		return StatusError
 	}
-
 	tgtHash, err := hashFile(tgt.Path)
 	if err != nil {
 		s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
@@ -186,6 +170,7 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo) FileStatus {
 		return StatusMatch
 	}
 	return StatusDiffer
+
 }
 
 func hashFile(path string) (string, error) {
