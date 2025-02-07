@@ -272,12 +272,182 @@ test_deep_comparison() {
     return 0
 }
 
+test_file_status() {
+    printf "Testing file status handling...\n"
+
+    # Test new files (exist in source but not target)
+    printf "  Testing new file detection... "
+    dd if=/dev/urandom of="$TEST_DIR/source_only.dat" bs=1M count=1 2>/dev/null
+    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_quick.yaml" 2>&1)
+
+    if [[ $output =~ "    + source_only.dat [quick]" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected pattern: '    + source_only.dat [quick]'"
+        echo "Got output:"
+        echo "$output"
+        return 1
+    fi
+
+    # Test missing files (exist in target but not source)
+    printf "  Testing missing file detection... "
+    dd if=/dev/urandom of="$TEST_DIR-target/target_only.dat" bs=1M count=1 2>/dev/null
+    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_quick.yaml" 2>&1)
+
+    if [[ $output =~ "    - target_only.dat" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected pattern: '    - target_only.dat'"
+        echo "Got output:"
+        echo "$output"
+        return 1
+    fi
+
+    # Test error status (unreadable files in both source and target)
+    printf "  Testing error status... "
+    # Create a specific config for standard validation
+    cat > "${TEST_DIR}/config/config_standard_test.yaml" << EOL
+source: "${TEST_DIR}"
+target: "${TEST_DIR}-target"
+validation:
+  default_level: "standard"
+  buffer_size: 32768
+  hash_algorithm: "sha256"
+exclude:
+  - "config/*"
+  - "*.tmp"
+  - "*.bak"
+EOL
+
+    # Create identical files first
+    dd if=/dev/urandom of="$TEST_DIR/unreadable.dat" bs=1M count=1 2>/dev/null
+    cp "$TEST_DIR/unreadable.dat" "$TEST_DIR-target/unreadable.dat"
+    # Make both unreadable
+    chmod 000 "$TEST_DIR/unreadable.dat"
+    chmod 000 "$TEST_DIR-target/unreadable.dat"
+
+    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_standard_test.yaml" 2>&1)
+
+    if [[ $output =~ "    ! unreadable.dat" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected pattern: '    ! unreadable.dat'"
+        echo "Got output:"
+        echo "$output"
+        return 1
+    fi
+
+    # Cleanup test files
+    chmod 644 "$TEST_DIR/unreadable.dat" 2>/dev/null
+    chmod 644 "$TEST_DIR-target/unreadable.dat" 2>/dev/null
+    rm -f "$TEST_DIR/source_only.dat"
+    rm -f "$TEST_DIR-target/target_only.dat"
+    rm -f "$TEST_DIR/unreadable.dat"
+    rm -f "$TEST_DIR-target/unreadable.dat"
+    rm -f "$TEST_DIR/config/config_standard_test.yaml"
+
+    return 0
+}
+
+test_validation_escalation() {
+    printf "Testing validation level escalation...\n"
+
+    # Create config for quick->standard escalation
+    cat > "${TEST_DIR}/config/config_quick_standard.yaml" << EOL
+source: "${TEST_DIR}"
+target: "${TEST_DIR}-target"
+validation:
+  default_level: "quick"
+  on_mismatch: "standard"
+  buffer_size: 32768
+  hash_algorithm: "sha256"
+exclude:
+  - "config/*"
+  - "*.tmp"
+  - "*.bak"
+EOL
+
+    # Create config for standard->deep escalation
+    cat > "${TEST_DIR}/config/config_standard_deep.yaml" << EOL
+source: "${TEST_DIR}"
+target: "${TEST_DIR}-target"
+validation:
+  default_level: "standard"
+  on_mismatch: "deep"
+  buffer_size: 32768
+  hash_algorithm: "sha256"
+exclude:
+  - "config/*"
+  - "*.tmp"
+  - "*.bak"
+EOL
+
+    # Test quick to standard escalation
+    printf "  Testing quick to standard escalation... "
+    # Create file with same size but different content
+    dd if=/dev/urandom of="$TEST_DIR/escalate_quick.dat" bs=1M count=1 2>/dev/null
+    dd if=/dev/urandom of="$TEST_DIR-target/escalate_quick.dat" bs=1M count=1 2>/dev/null
+
+    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_quick_standard.yaml" 2>&1)
+
+    if [[ $output =~ "    * escalate_quick.dat [standard]" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected pattern: '    * escalate_quick.dat [standard]'"
+        echo "Got output:"
+        echo "$output"
+        return 1
+    fi
+
+    # Test standard to deep escalation
+    printf "  Testing standard to deep escalation... "
+    # Create file that matches in first 32KB but differs after
+    dd if=/dev/urandom of="$TEST_DIR/escalate_standard.dat" bs=1M count=2 2>/dev/null
+    cp "$TEST_DIR/escalate_standard.dat" "$TEST_DIR-target/"
+    # Modify the file after the first 32KB
+    dd if=/dev/urandom of="$TEST_DIR-target/escalate_standard.dat" bs=1K seek=32 count=32 conv=notrunc 2>/dev/null
+
+    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_standard_deep.yaml" 2>&1)
+
+    if [[ $output =~ "    * escalate_standard.dat [deep]" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected pattern: '    * escalate_standard.dat [deep]'"
+        echo "Got output:"
+        echo "$output"
+        return 1
+    fi
+
+    # Cleanup test files
+    rm -f "$TEST_DIR/escalate_quick.dat"
+    rm -f "$TEST_DIR-target/escalate_quick.dat"
+    rm -f "$TEST_DIR/escalate_standard.dat"
+    rm -f "$TEST_DIR-target/escalate_standard.dat"
+    rm -f "$TEST_DIR/config/config_quick_standard.yaml"
+    rm -f "$TEST_DIR/config/config_standard_deep.yaml"
+
+    return 0
+}
+
 
 main() {
     local failed=0
     printf "Running validation tests...\n\n"
 
     setup_test_env
+
+    test_file_status || failed=1
+    test_validation_escalation || failed=1
 
     test_quick_comparison || failed=1
     test_standard_comparison || failed=1

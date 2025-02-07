@@ -212,6 +212,16 @@ exclude:
   - ".DS_Store"
   - "._*"
 
+# Deleted file handling
+deleted_files:
+  action: "report"           # report, delete, archive
+  archive_location: ""       # Required if action = "archive"
+  report_format: "text"      # text, csv, html
+  protected_paths:          # Never delete these paths
+    - "*.important"
+    - "tax/*"
+    - "**/*.original"
+
 # Validation settings as defined in section 5.1
 
 # Device optimization
@@ -240,6 +250,51 @@ platform:
 logging:
   level: "info"  # debug, info, warn, error
 ```
+
+# Add to Section 7.1 Example Configuration
+
+```yaml
+# Deleted file handling
+deleted_files:
+  action: "report"           # report, delete, archive
+  archive_location: ""       # Required if action = "archive"
+  report_format: "text"      # text, csv, html
+  protected_paths:          # Never delete these paths
+    - "*.important"
+    - "tax/*"
+    - "**/*.original"
+```
+
+## 7.2 Deleted File Handling
+
+### 7.2.1 Action Modes
+
+- **report** (safe-mode / default):
+  - Generates detailed report of files only in target
+  - Takes no action on files
+  - Report includes file path, size, and last modification time
+  
+- **delete** (mirror):
+  - Automatically removes files present only in target
+  - Honors protected_paths configuration
+  - Logs all deletions with timestamps
+  
+- **archive**:
+  - Moves files to specified archive location
+  - Preserves original directory structure
+  - Creates timestamped archive directories
+  
+
+### 7.2.3 Protected Paths
+- Patterns use same syntax as exclude patterns
+- Supports glob patterns and directory wildcards
+- Takes precedence over action mode
+- Protection reason included in reports
+
+### 7.2.4 Report Format
+- **text**: Human-readable formatted text
+- **csv**: Machine-parseable CSV format
+- **html**: Web-viewable report with sorting/filtering
 
 ## 8. Progress and Reporting
 

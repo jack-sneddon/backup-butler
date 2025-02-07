@@ -21,24 +21,36 @@ Checkpoint: Can list and filter files correctly
 
 ### Week 1: Core Validation
 
-- [ ] Implement FileValidator interface
-- [ ] Create validation configuration structures
-- [ ] Implement Quick validation
-- [ ] Implement Standard validation
-- [ ] Implement Deep validation
-- [ ] Add validation result tracking
-- [ ] Unit tests for each validator
+- [X] Implement FileValidator interface
+- [X] Create validation configuration structures
+- [X] Implement Quick validation
+- [X] Implement Standard validation
+- [X] Implement Deep validation
+- [X] Add validation result tracking
+- [X] Unit tests for each validator
 
-### Week 2: Advanced Features
 
-- [ ] Add scheduled validation support
+### Phase 3: Smart Validation Implementation
+
+Week 2: Advanced Features
+
 - [ ] Create validation history storage
-- [ ] Implement smart validation routing
 - [ ] Add performance monitoring
 - [ ] Integration tests
 - [ ] Performance benchmarks
 
-## Phase 4: Copy and Metadata (1 week)
+## Future Enhancements
+
+- [ ] Add scheduled validation support
+  - Configurable validation schedules
+  - Support for different schedules per path
+  - Historical validation tracking
+  - Automated periodic validation
+
+
+## Phase 4: Copy, Metadata, and Basic Backup (2 weeks)
+
+### Week 1: Core Copy and Metadata
 
 - [ ] Implement metadata-aware file copy
 - [ ] Add cross-platform metadata support
@@ -47,6 +59,26 @@ Checkpoint: Can list and filter files correctly
 - [ ] Unit tests for copy operations
 - [ ] Integration tests for metadata
 
+### Week 2: Backup Features
+
+- [ ] Implement backup command (basic)
+- [ ] File copying with verification
+- [ ] Simple progress tracking
+- [ ] Basic error handling
+- [ ] Implement deleted file handling:
+- [ ] Add configuration structures
+- [ ] Implement report generation (text, csv, html)
+- [ ] Implement deletion logic
+- [ ] Implement archive functionality
+- [ ] Add protected paths support
+- [ ] Unit tests for deleted file handling:
+- [ ] Test configuration parsing
+- [ ] Test each action mode
+- [ ] Test protected paths logic
+- [ ] Test report format generation
+- [ ] Integration tests for deleted file scenarios
+
+Checkpoint: Complete copy operations with metadata preservation and basic backup functionality
 ## Phase 5: Performance Optimization (1 week)
 
 - [ ] Add file grouping by validation level
