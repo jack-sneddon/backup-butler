@@ -1,184 +1,262 @@
-# Validation Level Analysis
+# Backup Butler: Technical Use Cases
 
-## Initial File Status Checks
+## Core Operations
 
-### Case 1: Missing Target File
-
-```bash
-GIVEN: Source file exists
-AND:   Target file does not exist
-THEN:  Status = StatusNew ('+')
-AND:   No validation performed (file needs to be copied)
+### Case 1: Directory Processing
+```
+GIVEN: Source directory with multiple subdirectories
+WHEN:  Processing starts
+THEN:  Process one directory at a time
+AND:   Complete current directory before moving to next
+AND:   Track progress at directory level
 ```
 
-### Case 2: Extra Target File
-
-```bash
-GIVEN: Source file does not exist
-AND:   Target file exists
-THEN:  Status = StatusMissing ('-')
-AND:   No validation performed (file may need to be removed)
+### Case 2: File Validation Levels
+```
+GIVEN: Files exist in both source and target
+WHEN:  Validation is performed
+THEN:  Apply appropriate validation level:
+      - Quick for initial check
+      - Standard if quick fails
+      - Deep based on configuration
 ```
 
-## Quick Validation Cases
+### Case 3: Progress Tracking
+```
+GIVEN: Operation is in progress
+THEN:  Show current directory being processed
+AND:   Show overall progress percentage
+AND:   Calculate remaining time based on:
+      - Files processed
+      - Average processing time
+      - Remaining files
+```
 
-Default starting point when default_level = "quick"
+## Operation History
 
-### Case 3: Basic Metadata Check
+### Case 4: Operation Logging
+```
+GIVEN: Backup operation completes
+THEN:  Log to .backup-butler/logs:
+      - Operation timestamps
+      - Files processed
+      - Data transferred
+      - Duration
+      - Any errors encountered
+```
 
-```bash
-GIVEN: Source and target files exist
-AND:   default_level = "quick"
+### Case 5: Report Generation
+```
+GIVEN: Files exist only in target
+AND:   deleted_files.action = "report"
+THEN:  Generate deleted_files.txt containing:
+      - File paths
+      - File sizes
+      - Last modification times
+      - Total affected files/size
+```
+
+## Error Handling
+
+### Case 6: Directory Error
+```
+GIVEN: Error occurs during directory processing
+THEN:  Complete current file if possible
+AND:   Log error details
+AND:   Move to next directory if possible
+```
+
+### Case 7: File Access Error
+```
+GIVEN: File cannot be read or written
+THEN:  Log specific error
+AND:   Mark file as error in report
+AND:   Continue with next file
+```
+
+## Performance Optimization
+
+### Case 8: HDD Optimization
+```
+GIVEN: Target is on HDD
+THEN:  Process files sequentially
+AND:   Minimize directory switches
+AND:   Use conservative I/O settings
+```
+
+### Case 9: Large Directory
+```
+GIVEN: Directory contains many files
+THEN:  Show frequent progress updates
+AND:   Maintain accurate ETA
+AND:   Process files in manageable chunks
+```
+
+## Configuration Validation
+
+### Case 10: Invalid Source Directory
+```
+GIVEN: Source directory in config doesn't exist
+WHEN:  Any command is run
+THEN:  Validate configuration before starting
+AND:   Display clear error message:
+      - Actual error (directory not found)
+      - Config file location
+      - Invalid setting
+AND:   Exit with non-zero status
+```
+
+### Case 11: Invalid Configuration Format
+```
+GIVEN: Configuration file has syntax errors
+WHEN:  Any command is run
+THEN:  Display clear error message:
+      - Location of syntax error
+      - Expected format
+      - Actual content
+AND:   Exit with non-zero status
+```
+
+### Case 12: Invalid Configuration Values
+```
+GIVEN: Configuration has invalid values
+EXAMPLES:
+      - Negative buffer size
+      - Unknown validation level
+      - Invalid hash algorithm
+THEN:  Display clear error message:
+      - Invalid setting
+      - Allowed values
+      - Current value
+AND:   Exit with non-zero status
+```
+
+## Validation Operations
+
+### Case 13: Quick Validation
+```
+GIVEN: File exists in source and target
+AND:   Quick validation is configured
 THEN:  Compare:
-       - File sizes
-       - Modification times (with 2-second tolerance)
-IF:    Sizes match AND ModTimes within tolerance
-THEN:  Status = StatusMatch ('=')
-ELSE:  IF on_mismatch = "standard"
-       THEN Escalate to Standard validation
-       ELSE Status = StatusDiffer ('*')
+      - File sizes
+      - Modification times (2-second tolerance)
+IF:    Both match
+THEN:  Mark as valid (=)
+ELSE:  Escalate if configured
+      OR Mark as different (*)
 ```
 
-## Standard Validation Cases
-
-Used when default_level = "standard" or escalated from quick
-
-### Case 4: Standard Content Check
-
-```bash
-GIVEN: Source and target files exist
-AND:   (default_level = "standard" OR escalated from quick)
-THEN:  1. Perform quick validation first
-       2. If quick validation passes:
-          - Read first 32KB of both files
-          - Calculate hash of buffers
-          - Compare hashes
+### Case 14: Standard Validation
+```
+GIVEN: File exists in source and target
+AND:   Standard validation is configured
+THEN:  First perform quick validation
+IF:    Quick validation passes
+THEN:  Read first 32KB of both files
+AND:   Calculate hash of these buffers
 IF:    Hashes match
-THEN:  Status = StatusMatch ('=')
-ELSE:  IF on_mismatch = "deep"
-       THEN Escalate to Deep validation
-       ELSE Status = StatusDiffer ('*')
+THEN:  Mark as valid (=)
+ELSE:  Escalate if configured
+      OR Mark as different (*)
 ```
 
-## Deep Validation Cases
-
-Used when default_level = "deep" or escalated from standard
-
-### Case 5: Deep Content Check
-
-```bash
-GIVEN: Source and target files exist
-AND:   (default_level = "deep" OR escalated from standard)
-THEN:  1. Perform quick validation first
-       2. If quick validation passes:
-          - Read entire content of both files
-          - Calculate full file hashes
-          - Compare hashes
+### Case 15: Deep Validation
+```
+GIVEN: File exists in source and target
+AND:   Deep validation is configured
+THEN:  First perform quick validation
+IF:    Quick validation passes
+THEN:  Calculate hash of entire file contents
 IF:    Hashes match
-THEN:  Status = StatusMatch ('=')
-ELSE:  Status = StatusDiffer ('*')
+THEN:  Mark as valid (=)
+ELSE:  Mark as different (*)
 ```
 
-## Validation Level Escalation Rules
+## Error Handling
 
-### Case 6: Quick to Standard Escalation
-
-```bash
-GIVEN: initial_level = "quick"
-AND:   on_mismatch = "standard"
-WHEN:  Quick validation fails
-THEN:  Perform standard validation
+### Case 16: Hash Calculation Errors
 ```
-
-### Case 7: Standard to Deep Escalation
-
-```bash
-GIVEN: initial_level = "standard"
-AND:   on_mismatch = "deep"
-WHEN:  Standard validation fails
-THEN:  Perform deep validation
-```
-
-## Error Handling Cases
-
-### Case 8: File Access Errors
-
-```bash
-GIVEN: Any validation level
-WHEN:  File cannot be opened or read
-THEN:  Status = StatusError ('!')
-AND:   Error logged
-AND:   No further validation attempted
-```
-
-### Case 9: Hash Calculation Errors
-
-```bash
-GIVEN: Standard or Deep validation
+GIVEN: File being validated
 WHEN:  Hash calculation fails
-THEN:  Status = StatusError ('!')
-AND:   Error logged
-AND:   No further validation attempted
+POSSIBLE CAUSES:
+      - Read error during calculation
+      - Memory allocation failure
+      - Disk error
+THEN:  Log specific error
+AND:   Mark file with error status (!)
+AND:   Include in error summary
 ```
 
-## Performance Considerations
-
-### Case 10: Large File Handling
-
-```bash
-GIVEN: Large files (> 1GB)
-WHEN:  Deep validation requested
-THEN:  Process in chunks to manage memory
-AND:   Use buffered reading
+### Case 17: Partial Read Errors
+```
+GIVEN: File being validated
+WHEN:  Partial content read fails
+THEN:  Log specific error
+AND:   Mark file with error status (!)
+AND:   Continue with next file
 ```
 
-## Deleted File Handling Cases
-
-### Case 11: Default Report Mode
-
-```bash
-GIVEN: Source file has been deleted
-AND:   File exists in target
-AND:   No specific deletion policy configured
-THEN:  File is marked as StatusMissing ('-')
-AND:   File is included in detailed report
-AND:   No action taken on target file
+### Case 18: Permission Errors
+```
+GIVEN: File requires specific permissions
+WHEN:  File cannot be accessed
+THEN:  Log permission error
+AND:   Mark file with error status (!)
+AND:   Include permission details in report
 ```
 
-### Case 12: Mirror Mode Deletion
-
+### Case 19: Disk Space Errors
 ```
-GIVEN: Source file has been deleted
-AND:   File exists in target
-AND:   Mirror mode is enabled (--mirror flag)
-THEN:  File is marked as StatusMissing ('-')
-AND:   File is automatically deleted from target
-AND:   Deletion is logged in operation report
+GIVEN: Operation is in progress
+WHEN:  Disk space becomes full
+THEN:  Complete current file if possible
+AND:   Log error with space requirements
+AND:   Exit gracefully with error status
 ```
 
-### Case 13: Configured Archive Mode
-
+### Case 20: Quick to Standard Escalation
 ```
-GIVEN: Source file has been deleted
-AND:   File exists in target
-AND:   Archive mode is configured with valid path
-THEN:  File is marked as StatusMissing ('-')
-AND:   File is moved to archive location
-AND:   Original path structure is preserved in archive
-AND:   Move operation is logged
-```
-
-### Case 14: Protected Path Handling
-
-```
-GIVEN: Source file has been deleted
-AND:   File exists in target
-AND:   File matches protected path pattern
-THEN:  File is marked as StatusMissing ('-')
-AND:   No action is taken regardless of deletion policy
-AND:   Protection reason is noted in report
+GIVEN: File exists in source and target
+AND:   Quick validation is configured
+AND:   on_mismatch = "standard"
+WHEN:  Quick validation fails (size/time mismatch)
+THEN:  Automatically escalate to standard validation
+AND:   Read first 32KB of both files
+AND:   Calculate partial content hashes
+AND:   Mark final status with [standard] level indicator
 ```
 
+### Case 21: Standard to Deep Escalation
+```
+GIVEN: File exists in source and target
+AND:   Standard validation is configured
+AND:   on_mismatch = "deep"
+WHEN:  Standard validation fails (partial content differs)
+THEN:  Automatically escalate to deep validation
+AND:   Calculate full file hashes
+AND:   Mark final status with [deep] level indicator
+```
+
+### Case 22: Multiple Level Escalation
+```
+GIVEN: File exists in source and target
+AND:   Quick validation is configured
+AND:   on_mismatch = "deep"
+WHEN:  Quick validation fails
+THEN:  Skip standard validation
+AND:   Escalate directly to deep validation
+AND:   Mark final status with [deep] level indicator
+```
+
+### Case 23: Escalation with Errors
+```
+GIVEN: Validation escalation is configured
+WHEN:  Error occurs during escalated check
+THEN:  Mark file with error status (!)
+AND:   Log original validation level
+AND:   Log level where error occurred
+AND:   Include in error summary
+```
 
 ## Test Coverage Recommendations
 

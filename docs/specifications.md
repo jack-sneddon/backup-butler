@@ -63,16 +63,6 @@ validation:
   # Validation level when metadata differs
   on_mismatch: "standard"     # none, standard, deep
   
-  # Scheduled deep validation
-  scheduled_deep:
-    enabled: true
-    frequency: "monthly"      # never, daily, weekly, monthly, yearly
-    last_run: "2024-01-01"   # ISO date
-    paths:
-      - "/important/**"
-    exclude:
-      - "*.tmp"
-
   # Performance tuning
   buffer_size: 32768         # bytes for partial content validation
   hash_algorithm: "sha256"   # md5, sha1, sha256
@@ -144,53 +134,175 @@ backup-butler [command] [options]
 
 Commands:
   check     Compare source and target without copying
-  sync      Synchronize source to target (with copy)
-  backup    Create/update backup with resume capability
-  version   Manage versions and history
+  sync      Synchronize source to target with copy
+  history   Show operation logs and reports
+  version   Display program version information
 
 Global Options:
   --config string     Configuration file path
-  --dry-run          Show what would happen without changes
   --log-level string Log level (debug|info|warn|error)
 ```
 
 ### 6.2 Check Command
 
+Purpose: Preview all changes that would be made during a sync operation
+
 ```bash
 backup-butler check [options]
   --level string    Validation level (quick|standard|deep)
-  --output string   Report format (text|csv|html)
 ```
 
-### 6.3 Sync/Backup Commands
+Output Format:
+
+```bash
+Backup Butler v0.1.0
+====================
+
+Scan Results:
+├── Locations
+│   ├── Source: /Photos/2024
+│   └── Target: /Volumes/backup/Photos/2024
+├── Summary
+│   ├── Directories: 5
+│   ├── Files: 207,163
+│   ├── Total Size: 1.2TB
+└── File Status
+    = photos/img001.jpg [quick]         # File matches
+    + photos/img002.jpg [quick]         # Will be copied
+    * photos/img003.jpg [standard]      # Will be updated
+    - photos/old/img004.jpg             # Only in target
+    ! photos/corrupt.jpg                # Error reading file
+
+Results Summary:
+├── Matched:  180,245 files
+├── New:      25,890 files
+├── Missing:  1,028 files
+├── Modified: 0 files
+└── Errors:   0 files
+
+Actions to be taken:
+├── Files to copy: 25,890 (156.2 GB)
+├── Files to update: 0
+└── Files only in target: 1,028 (review deleted_files.txt)
+
+Validation to be performed:
+├── Quick:    180,245 files
+├── Standard: 25,890 files
+└── Deep:     1,028 files
+
+Estimated time: 2h 15m
+```
+
+Key Features:
+- Shows status of ALL files (not just changes)
+- Indicates validation level used for each file
+- Provides clear summary of actions to be taken
+- Same format used in both 'check' and 'sync'
+- Identifies files that only exist in target
+- Groups files by status for easy review
+- Estimates operation time
+
+The check command:
+1. Performs all validation but makes no changes
+2. Creates the same reports as 'sync' would
+3. Shows validation levels that would be used
+4. Gives users chance to review before proceeding
+
+
+### 6.3 Sync Command
+Purpose: Perform actual backup operation
 
 ```bash
 backup-butler sync [options]
-backup-butler backup [options]
-  --resume          Resume from last checkpoint
-  --force          Override safety checks
+  --level string    Validation level (quick|standard|deep)
 ```
+
+Operation Steps:
+1. Directory Analysis
+   - Scan source and target
+   - Build operation plan
+   - Show initial summary
+
+2. Directory Processing
+   ```
+   Processing: /Photos/Vacation2024
+   [================>    ] 78% (156/200 files)
+   Currently Processing:
+     Vacation2024/Summer (156.2 MB)
+     ETA: 2m 15s
+   ```
+
+3. File Operations:
+   - Create missing directories
+   - Copy new files
+   - Validate existing files
+   - Handle deleted files per config
+   - Process one directory at a time
+
+4. Progress Display:
+   ```
+   Statistics:
+   ├── Processed: 156 files (2.1 GB)
+   ├── Remaining: 44 files (0.6 GB)
+   └── Total Time: 5m 32s
+   ```
+
+5. Completion Summary:
+   ```
+   Operation Complete
+   =================
+   Start Time: 2025-02-06 14:30:22
+   End Time:   2025-02-06 14:35:54
+   Duration:   5m 32s
+
+   Results:
+   ├── Directories Processed: 5
+   ├── Files Copied: 25
+   ├── Files Validated: 175
+   ├── Data Transferred: 2.7 GB
+   └── Average Speed: 8.3 MB/s
+
+   Validation Summary:
+   ├── Quick: 150 files
+   ├── Standard: 45 files
+   └── Deep: 5 files
+
+   Reports Generated:
+   └── /Volumes/backup/Photos/.backup-butler/reports/deleted_files.txt
+   ```
+
+Behavioral Notes:
+- Same validation and checks as 'check' command
+- Actually performs file operations
+- Processes directory by directory
+- Creates operation logs
+- Generates status reports
+- Handles errors gracefully
+
 
 ### 6.4 Version Command
 
 ```bash
-backup-butler version [command]
-Commands:
-  list     Show version history
-  show     Display version details
-  clean    Clean old versions
-  size     Show version storage usage
+backup-butler version
+Backup Butler v0.1.0
+Git commit: abc123
+Built: 2025-02-06
 ```
 
-### 6.5 Dry Run Behavior
+### 6.5 History Command
 
-The --dry-run flag:
+```bash
+backup-butler history
+Last Operation: 2025-02-06 14:30:22
+Status: Complete
+Results:
+├── Files Processed: 207,163
+├── Data Transferred: 1.2TB
+└── Duration: 1h 15m
 
-- Shows changes without modifying files
-- Performs all configured validation checks
-- Reports validation levels used
-- Estimates time and I/O impact
-- Produces detailed report
+Reports Available:
+└── /Volumes/backup/Photos/.backup-butler/reports/deleted_files.txt
+```
 
 ## 7. Configuration
 
@@ -212,39 +324,18 @@ exclude:
   - ".DS_Store"
   - "._*"
 
-# Deleted file handling
-deleted_files:
-  action: "report"           # report, delete, archive
-  archive_location: ""       # Required if action = "archive"
-  report_format: "text"      # text, csv, html
-  protected_paths:          # Never delete these paths
-    - "*.important"
-    - "tax/*"
-    - "**/*.original"
-
 # Validation settings as defined in section 5.1
 
-# Device optimization
+# Device optimization (HDD focused)
 storage:
-  device_type: "hdd"  # hdd, ssd
+  device_type: "hdd"  # currently only hdd supported
   max_threads: 4
-  io_priority: "balanced"  # balanced, performance, conservative
-  sequential_threshold: 100
+  io_priority: "conservative"  # focused on reliability
 
-# Progress tracking
-auto_save:
-  enabled: true
-  thresholds:
-    files: 100
-    data: "1GB"
-    time: "5m"
-
-# Platform specific
-platform:
-  paths:
-    windows_separator: "\\"
-    case_sensitive: false
-  encoding: "utf-8"
+# Deleted file handling
+deleted_files:
+  action: "report"           # report, delete
+  report_format: "text"      # text only in current version
 
 # Logging
 logging:
@@ -304,8 +395,7 @@ deleted_files:
 Directory: /Photos/Vacation2024
 [================>    ] 78% (156/200 files)
 Currently Processing:
-  IMG_4567.jpg (156.2 MB)
-  Speed: 45.3 MB/s
+  Vacation2024/Summer (156.2 MB)
   ETA: 2m 15s
 
 Statistics:
@@ -314,7 +404,32 @@ Statistics:
 └── Total Time: 5m 32s
 ```
 
-### 8.2 Validation Report
+### 8.2 Directory-Based Processing
+
+- Files are processed one directory at a time
+- For each directory:
+  1. Create directory structure if needed
+  2. Process all files in current directory
+  3. Move to next directory
+- Benefits:
+  - Optimized for HDD sequential access
+  - Clear progress reporting
+  - Better error handling (directory level)
+  - Simpler resume points
+
+### 8.3 Progress Calculation
+
+- Progress based on total files and directories
+- ETA calculated using:
+  - Completed files count
+  - Total elapsed time
+  - Remaining files count
+- Progress updated:
+  - After each file completion
+  - When starting new directory
+  - At regular intervals (every second)
+
+### 8.4 Validation Report
 
 ```sh
 ./photos/2024/
@@ -335,44 +450,118 @@ Validation Summary:
 
 ### 9.1 HDD Requirements
 
-- Thread limiting
-- I/O scheduling
-- Sequential access optimization
-- Head movement minimization
+#### Directory-Based Processing
+
+- Process one directory at a time completely
+- Directory ordering optimized for sequential access
+- Complete current directory before moving to next
+- Directory-level error handling and recovery
+
+#### I/O Optimization
+
+- Thread limiting (max 4 threads)
+- Sequential access within directories
+- Minimize head movement by completing directories
+- Conservative I/O scheduling
 
 ### 9.2 Performance Optimization
 
-1. Group files by validation level
-2. Process in directory order
-3. Implement appropriate caching
-4. Enable parallel validation for SSDs
-5. Batch small files
+1. Group files by directory
+   - Process all files in current directory
+   - Minimize directory switching
+   - Clear progress tracking per directory
 
-## 10. State Management
+2. Directory Processing Order
+   - Process parent directories before children
+   - Complete one directory tree before moving to next
+   - Optimize for sequential disk access
 
-### 10.1 Metadata Storage
+3. Error Handling
+   - Directory-level recovery points
+   - Clear reporting of directory status
+   - Easy resume from last directory
 
-Store in `<target>/.backup-butler/`:
+## 10. Reports and Logs
 
-- Version history
-- File metadata
-- Operation logs
-- Resume state
-- Validation history
+### 10.1 Directory Structure
 
-### 10.2 Resume State
+```bash
+<target>/.backup-butler/
+├── logs/
+│   ├── current.log        # Operation metrics for current run
+│   └── previous.log       # Last operation metrics
+└── reports/
+    └── deleted_files.txt  # List of files only in target
+```
+
+### 10.2 Operation Logs
+
+Purpose: Track performance and execution metrics
+
+Content:
+
+```bash
+Operation Start: 2025-02-06T14:30:22Z
+Operation End:   2025-02-06T15:45:33Z
+Total Files Processed: 207,163
+Total Data: 1.2TB
+Validation Summary:
+  - Quick: 180,245
+  - Standard: 25,890
+  - Deep: 1,028
+Errors: None
+```
+
+### 10.3 File Status Reports
+Purpose: Provide actionable information about file discrepancies
+
+Content:
+
+```bash
+Files Present Only in Target (Run: 2025-02-06T14:30:22Z)
+=====================================================
+/Photos/2023/
+  - vacation/IMG_1234.jpg (5.2MB, Last Modified: 2023-06-15)
+  - vacation/IMG_1235.jpg (4.8MB, Last Modified: 2023-06-15)
+/Photos/2024/
+  - summer/DSC_9876.jpg (8.1MB, Last Modified: 2024-07-01)
+
+Summary:
+- Total files: 3
+- Total size: 18.1MB
+- Affected directories: 2
+
+Actions:
+1. Review these files as they no longer exist in source
+2. Use 'backup-butler sync' with deleted_files.action = "delete" to remove
+3. Or manually preserve/remove these files as needed
+```
+
+### 10.4 File Status Report Configuration
 
 ```yaml
-resume:
-  version_id: "20250125-143022"
-  completed_files: 156
-  total_files: 200
-  last_file: "IMG_4567.jpg"
-  validation_state:
-    quick_complete: 140
-    standard_complete: 12
-    deep_complete: 4
+deleted_files:
+  action: "report"           # report, delete
+  report_format: "text"      # text only in current version
 ```
+
+### 10.5 Retention
+
+- Operation Logs:
+  - Keep only current and previous run
+  - Automatically rotated on new run
+- File Status Reports:
+  - New report generated each run
+  - Previous report overwritten
+  - User should save reports manually if needed
+
+### 10.6 Report Generation
+
+- File status report generated when:
+  1. Files exist only in target
+  2. Action is set to "report"
+- Report location provided in operation summary
+- Report remains until next run
 
 ## 11. Testing Strategy
 
