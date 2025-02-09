@@ -161,66 +161,106 @@ func findFile(stats map[string]*DirectoryStats, path string) *FileInfo {
 }
 
 func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) FileStatus {
-	s.log.Debugw("Starting file comparison",
-		"path", src.Path,
-		"level", level)
+    s.log.Debugw("Starting file comparison",
+        "path", src.Path,
+        "level", level)
 
-	// First check metadata for all levels
-	if src.Size != tgt.Size {
-		s.log.Debugw("Size mismatch",
-			"path", src.Path,
-			"sourceSize", src.Size,
-			"targetSize", tgt.Size)
-		return StatusDiffer
-	}
+    // First check metadata for all levels
+    if src.Size != tgt.Size {
+        s.log.Debugw("Size mismatch",
+            "path", src.Path,
+            "sourceSize", src.Size,
+            "targetSize", tgt.Size)
+        return StatusDiffer
+    }
 
-	// Compare modification times with tolerance
-	const modTimeToleranceSeconds = 2
-	if diff := abs(src.ModTime - tgt.ModTime); diff > modTimeToleranceSeconds {
-		s.log.Debugw("Modification time mismatch",
-			"path", src.Path,
-			"sourceTime", src.ModTime,
-			"targetTime", tgt.ModTime,
-			"difference", diff)
-		return StatusDiffer
-	}
+    // Compare modification times with tolerance
+    const modTimeToleranceSeconds = 2
+    if diff := abs(src.ModTime - tgt.ModTime); diff > modTimeToleranceSeconds {
+        s.log.Debugw("Modification time mismatch",
+            "path", src.Path,
+            "sourceTime", src.ModTime,
+            "targetTime", tgt.ModTime,
+            "difference", diff)
+        return StatusDiffer
+    }
 
-	// For Quick validation, metadata match is enough
-	if level == types.Quick {
-		s.log.Debugw("Quick validation metadata match",
-			"path", src.Path)
-		return StatusDiffer // Return StatusDiffer to trigger escalation
-	}
+    // For Quick validation, metadata match is enough
+    if level == types.Quick {
+        s.log.Debugw("Quick validation metadata match",
+            "path", src.Path)
+        return StatusDiffer  // Return StatusDiffer to trigger escalation
+    }
 
-	// For Standard and Deep validation, do hash comparison
-	s.log.Debugw("Performing hash comparison",
-		"path", src.Path,
-		"level", level)
+    // For Standard validation, check first 32KB
+    if level == types.Standard {
+        srcHash, err := hashPartialFile(src.Path, s.opts.BufferSize)
+        if err != nil {
+            s.log.Debugw("Hash error", "path", src.Path, "error", err)
+            return StatusError
+        }
+        tgtHash, err := hashPartialFile(tgt.Path, s.opts.BufferSize)
+        if err != nil {
+            s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
+            return StatusError
+        }
 
-	srcHash, err := hashFile(src.Path)
-	if err != nil {
-		s.log.Debugw("Hash error", "path", src.Path, "error", err)
-		return StatusError
-	}
-	tgtHash, err := hashFile(tgt.Path)
-	if err != nil {
-		s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
-		return StatusError
-	}
+        if srcHash != tgtHash {
+            s.log.Debugw("Partial content mismatch",
+                "path", src.Path,
+                "level", level,
+                "srcHash", srcHash[:8],
+                "tgtHash", tgtHash[:8])
+            return StatusDiffer
+        }
+        return StatusMatch
+    }
 
-	if srcHash != tgtHash {
-		s.log.Debugw("Content mismatch",
-			"path", src.Path,
-			"level", level,
-			"srcHash", srcHash[:8],
-			"tgtHash", tgtHash[:8])
-		return StatusDiffer
-	}
+    // For Deep validation, do full content hash
+    srcHash, err := hashFile(src.Path)
+    if err != nil {
+        s.log.Debugw("Hash error", "path", src.Path, "error", err)
+        return StatusError
+    }
+    tgtHash, err := hashFile(tgt.Path)
+    if err != nil {
+        s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
+        return StatusError
+    }
 
-	s.log.Debugw("File comparison successful",
-		"path", src.Path,
-		"level", level)
-	return StatusMatch
+    if srcHash != tgtHash {
+        s.log.Debugw("Full content mismatch",
+            "path", src.Path,
+            "level", level,
+            "srcHash", srcHash[:8],
+            "tgtHash", tgtHash[:8])
+        return StatusDiffer
+    }
+
+    s.log.Debugw("File comparison successful",
+        "path", src.Path,
+        "level", level)
+    return StatusMatch
+}
+
+// hashPartialFile reads and hashes only the first bufferSize bytes
+func hashPartialFile(path string, bufferSize int) (string, error) {
+    f, err := os.Open(path)
+    if err != nil {
+        return "", err
+    }
+    defer f.Close()
+
+    h := sha256.New()
+    buf := make([]byte, bufferSize)
+
+    n, err := io.ReadFull(f, buf)
+    if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+        return "", err
+    }
+
+    h.Write(buf[:n])
+    return string(h.Sum(nil)), nil
 }
 
 func abs(n int64) int64 {
