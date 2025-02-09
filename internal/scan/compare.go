@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
 func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
@@ -66,21 +68,34 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 			comp := &FileComparison{
 				Path:   relPath,
 				Source: file,
-				Level:  validationLevel,
+				Level:  types.ValidationLevel(validationLevel),
 			}
 
 			if tf := findFile(targetStats, targetPath); tf != nil {
 				comp.Target = tf
-				if s.opts.ValidationConfig != nil && s.opts.ValidationConfig.OnMismatch != "" {
-					comp.Status = s.compareFiles(file, tf)
-					if comp.Status == StatusDiffer {
-						comp.Level = s.opts.ValidationConfig.OnMismatch
-						s.log.Debugw("Escalating validation due to mismatch",
-							"path", file.Path,
-							"escalatedLevel", s.opts.ValidationConfig.OnMismatch)
-					}
-				} else {
-					comp.Status = s.compareFiles(file, tf)
+
+				// Do initial comparison at current level
+				s.log.Debugw("Performing initial comparison",
+					"path", file.Path,
+					"level", comp.Level)
+
+				comp.Status = s.compareFiles(file, tf, comp.Level)
+
+				// If comparison shows differences and escalation is configured
+				if comp.Status == StatusDiffer &&
+					s.opts.ValidationConfig != nil &&
+					s.opts.ValidationConfig.OnMismatch != "" {
+
+					// Update level for escalated comparison
+					oldLevel := comp.Level
+					comp.Level = s.opts.ValidationConfig.OnMismatch
+					s.log.Debugw("Escalating validation",
+						"path", file.Path,
+						"fromLevel", oldLevel,
+						"toLevel", comp.Level)
+
+					// Perform comparison at escalated level
+					comp.Status = s.compareFiles(file, tf, comp.Level)
 				}
 			} else {
 				comp.Status = StatusNew
@@ -121,10 +136,11 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 			}
 		}
 	}
+
 	return comparisons, nil
 }
 
-func (s *Scanner) determineValidationLevel(path string) string {
+func (s *Scanner) determineValidationLevel(path string) types.ValidationLevel {
 	// Return the default validation level
 	s.log.Debugw("Using default validation level",
 		"path", path,
@@ -144,17 +160,43 @@ func findFile(stats map[string]*DirectoryStats, path string) *FileInfo {
 	return nil
 }
 
-func (s *Scanner) compareFiles(src, tgt *FileInfo) FileStatus {
+func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) FileStatus {
+	s.log.Debugw("Starting file comparison",
+		"path", src.Path,
+		"level", level)
+
+	// First check metadata for all levels
 	if src.Size != tgt.Size {
-		// If files differ and we have validation config with onMismatch
-		if s.opts.ValidationConfig != nil && s.opts.ValidationConfig.OnMismatch != "" {
-			s.log.Debugw("Escalating validation due to mismatch",
-				"path", src.Path,
-				"escalatedLevel", s.opts.ValidationConfig.OnMismatch)
-			//comp.Level = s.opts.ValidationConfig.OnMismatch
-		}
+		s.log.Debugw("Size mismatch",
+			"path", src.Path,
+			"sourceSize", src.Size,
+			"targetSize", tgt.Size)
 		return StatusDiffer
 	}
+
+	// Compare modification times with tolerance
+	const modTimeToleranceSeconds = 2
+	if diff := abs(src.ModTime - tgt.ModTime); diff > modTimeToleranceSeconds {
+		s.log.Debugw("Modification time mismatch",
+			"path", src.Path,
+			"sourceTime", src.ModTime,
+			"targetTime", tgt.ModTime,
+			"difference", diff)
+		return StatusDiffer
+	}
+
+	// For Quick validation, metadata match is enough
+	if level == types.Quick {
+		s.log.Debugw("Quick validation metadata match",
+			"path", src.Path)
+		return StatusDiffer // Return StatusDiffer to trigger escalation
+	}
+
+	// For Standard and Deep validation, do hash comparison
+	s.log.Debugw("Performing hash comparison",
+		"path", src.Path,
+		"level", level)
+
 	srcHash, err := hashFile(src.Path)
 	if err != nil {
 		s.log.Debugw("Hash error", "path", src.Path, "error", err)
@@ -166,11 +208,26 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo) FileStatus {
 		return StatusError
 	}
 
-	if srcHash == tgtHash {
-		return StatusMatch
+	if srcHash != tgtHash {
+		s.log.Debugw("Content mismatch",
+			"path", src.Path,
+			"level", level,
+			"srcHash", srcHash[:8],
+			"tgtHash", tgtHash[:8])
+		return StatusDiffer
 	}
-	return StatusDiffer
 
+	s.log.Debugw("File comparison successful",
+		"path", src.Path,
+		"level", level)
+	return StatusMatch
+}
+
+func abs(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 func hashFile(path string) (string, error) {
@@ -186,18 +243,4 @@ func hashFile(path string) (string, error) {
 	}
 
 	return string(h.Sum(nil)), nil
-}
-
-func (s *Scanner) findTargetFile(sourcePath, targetRoot string) *FileInfo {
-	relPath, _ := filepath.Rel(s.rootPath, sourcePath)
-	targetPath := filepath.Join(targetRoot, relPath)
-
-	for _, dir := range s.stats {
-		for _, file := range dir.Files {
-			if file.Path == targetPath {
-				return file
-			}
-		}
-	}
-	return nil
 }

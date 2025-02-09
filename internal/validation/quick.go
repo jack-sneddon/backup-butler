@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/scan"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
 // QuickValidator implements metadata-only comparison
@@ -14,8 +15,8 @@ func NewQuickValidator() *QuickValidator {
 	return &QuickValidator{}
 }
 
-func (v *QuickValidator) Level() ValidationLevel {
-	return Quick
+func (v *QuickValidator) Level() types.ValidationLevel {
+	return types.Quick
 }
 
 // Compare checks equality between source and target files using metadata only

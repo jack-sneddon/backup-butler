@@ -8,16 +8,8 @@ import (
 	"github.com/jack-sneddon/backup-butler/internal/config"
 	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/scan"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 	"github.com/spf13/cobra"
-)
-
-// ValidationLevel defines how thorough the check should be
-type ValidationLevel string
-
-const (
-	Quick    ValidationLevel = "quick"    // Size and modification time only
-	Standard ValidationLevel = "standard" // Includes basic hash comparison
-	Deep     ValidationLevel = "deep"     // Full content verification
 )
 
 func NewCheckCmd() *cobra.Command {
@@ -67,19 +59,18 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	var level string
 
 	// 1. Get default from config if available
-	// 1. Get default from config if available
 	if cfg.Validation != nil && cfg.Validation.DefaultLevel != "" {
-		level = cfg.Validation.DefaultLevel
+		level = string(cfg.Validation.DefaultLevel)
 		log.Debugw("Using config validation level", "level", level)
 	}
 
-	// 1. Get default from config if available
+	// 2. Get default from config if available
 	if cfg.Validation != nil && cfg.Validation.DefaultLevel != "" {
-		level = cfg.Validation.DefaultLevel
+		level = string(cfg.Validation.DefaultLevel)
 		log.Debugw("Using config validation level", "level", level)
 		log.Debugw("check.go::runCheck() - Using config validation level",
 			"level", level,
-			"configLevel", cfg.Validation.DefaultLevel)
+			"configLevel", string(cfg.Validation.DefaultLevel))
 
 	} else {
 		log.Debugw("check.go::runCheck() - No validation level in config")
@@ -97,7 +88,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	// 3. Set standard as default if neither is specified
 	if level == "" {
-		level = string(Standard)
+		level = string(types.Standard)
 		log.Debugw("check.go::runCheck() - Using default validation level",
 			"level", level)
 	}
@@ -123,7 +114,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		IncludeFolders:   cfg.Folders,
 		BufferSize:       cfg.Comparison.BufferSize,
 		MaxDepth:         -1,
-		DefaultLevel:     level,
+		DefaultLevel:     types.ValidationLevel(level),
 		ValidationConfig: cfg.Validation,
 	}
 
@@ -232,7 +223,7 @@ func printResults(comparisons []*scan.FileComparison) {
 		// Add validation level to output
 		levelStr := ""
 		if comp.Level != "" {
-			levelStr = fmt.Sprintf(" [%s]", comp.Level)
+			levelStr = fmt.Sprintf(" [%s]", string(comp.Level))
 		}
 		fmt.Printf("    %c %s%s\n", comp.Status, comp.Path, levelStr)
 	}
@@ -247,11 +238,7 @@ func printResults(comparisons []*scan.FileComparison) {
 }
 
 func isValidLevel(level string) bool {
-	switch ValidationLevel(level) {
-	case Quick, Standard, Deep:
-		return true
-	}
-	return false
+	return types.IsValidLevel(level)
 }
 
 func formatBytes(bytes int64) string {

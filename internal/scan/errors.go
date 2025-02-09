@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
 // ScanError represents errors that can occur during scanning
@@ -28,21 +29,11 @@ func NewScanError(path string, op string, err error) *ScanError {
 	}
 }
 
-// Scanner configuration options
-type ScannerOptions struct {
-	ExcludePatterns  []string
-	IncludeFolders   []string
-	MaxDepth         int
-	BufferSize       int
-	DefaultLevel     string
-	ValidationConfig *ValidationConfig
-}
-
 type ValidationConfig struct {
-	DefaultLevel  string `yaml:"default_level"`
-	OnMismatch    string `yaml:"on_mismatch"`
-	BufferSize    int    `yaml:"buffer_size"`
-	HashAlgorithm string `yaml:"hash_algorithm"`
+	DefaultLevel  types.ValidationLevel `yaml:"default_level"`
+	OnMismatch    types.ValidationLevel `yaml:"on_mismatch"`
+	BufferSize    int                   `yaml:"buffer_size"`
+	HashAlgorithm string                `yaml:"hash_algorithm"`
 }
 
 // Enhanced Progress tracking
@@ -129,4 +120,32 @@ func matchesPattern(path string, patterns []string) bool {
 		}
 	}
 	return false
+}
+
+// Add UnmarshalYAML method to handle YAML conversion
+func (v *ValidationConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Temporary struct using strings
+	type TempConfig struct {
+		DefaultLevel  string `yaml:"default_level"`
+		OnMismatch    string `yaml:"on_mismatch"`
+		BufferSize    int    `yaml:"buffer_size"`
+		HashAlgorithm string `yaml:"hash_algorithm"`
+	}
+
+	var temp TempConfig
+	if err := unmarshal(&temp); err != nil {
+		return err
+	}
+
+	// Convert strings to ValidationLevel
+	if temp.DefaultLevel != "" {
+		v.DefaultLevel = types.ValidationLevel(temp.DefaultLevel)
+	}
+	if temp.OnMismatch != "" {
+		v.OnMismatch = types.ValidationLevel(temp.OnMismatch)
+	}
+	v.BufferSize = temp.BufferSize
+	v.HashAlgorithm = temp.HashAlgorithm
+
+	return nil
 }

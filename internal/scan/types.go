@@ -1,6 +1,8 @@
 // internal/scan/types.go
 package scan
 
+import "github.com/jack-sneddon/backup-butler/internal/types"
+
 // FileStatus represents the comparison status between source and target files
 type FileStatus byte
 
@@ -39,6 +41,6 @@ type FileComparison struct {
 	Status        FileStatus
 	Source        *FileInfo
 	Target        *FileInfo
-	Level         string // Validation level used
-	ValidationMsg string // Optional message about validation
+	Level         types.ValidationLevel // Validation level used
+	ValidationMsg string                // Optional message about validation
 }

@@ -1,3 +1,4 @@
+// internal/validation/core.go
 package validation
 
 import (
@@ -6,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/scan"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
 // CriticalPath defines special validation requirements for specific paths
@@ -13,14 +15,6 @@ type CriticalPath struct {
 	Path  string `yaml:"path"`
 	Level string `yaml:"level"`
 }
-
-type ValidationLevel string
-
-const (
-	Quick    ValidationLevel = "quick"
-	Standard ValidationLevel = "standard"
-	Deep     ValidationLevel = "deep"
-)
 
 // Error definitions
 var (
@@ -47,7 +41,7 @@ type ComparisonStrategy interface {
 	// Compare checks equality between source and target files
 	Compare(source, target *scan.FileInfo) ComparisonResult
 	// Level returns the comparison level used
-	Level() ValidationLevel
+	Level() types.ValidationLevel
 }
 
 // ValidatorOptions contains configuration for validators
@@ -68,7 +62,7 @@ type ComparisonResult struct {
 type ValidationResult struct {
 	Comparison  ComparisonResult
 	RulesPassed bool
-	Level       ValidationLevel
+	Level       types.ValidationLevel
 	Messages    []string
 }
 
@@ -82,13 +76,13 @@ type FileValidator struct {
 // ValidationRules defines integrity requirements
 type ValidationRules struct {
 	CriticalPaths []CriticalPathRule
-	OnMismatch    ValidationLevel
+	OnMismatch    types.ValidationLevel
 	ScheduledDeep *ScheduledValidation
 }
 
 type CriticalPathRule struct {
 	Pattern string
-	Level   ValidationLevel
+	Level   types.ValidationLevel
 }
 
 type ScheduledValidation struct {
@@ -151,11 +145,11 @@ func (v *FileValidator) Validate(source, target *scan.FileInfo) ValidationResult
 
 	// Track statistics
 	switch level {
-	case Quick:
+	case types.Quick:
 		v.stats.QuickChecks++
-	case Standard:
+	case types.Standard:
 		v.stats.StandardChecks++
-	case Deep:
+	case types.Deep:
 		v.stats.DeepChecks++
 	}
 
@@ -176,10 +170,10 @@ func (v *FileValidator) Validate(source, target *scan.FileInfo) ValidationResult
 	}
 }
 
-func (v *FileValidator) determineComparisonLevel(path string) ValidationLevel {
+func (v *FileValidator) determineComparisonLevel(path string) types.ValidationLevel {
 	// Check scheduled deep validation
 	if v.shouldPerformScheduledDeep(path) {
-		return Deep
+		return types.Deep
 	}
 
 	// Use strategy's default level
@@ -199,7 +193,7 @@ func (v *FileValidator) shouldPerformScheduledDeep(path string) bool {
 }
 
 // getCriticalPathLevel checks if path matches any critical path patterns
-func (v *FileValidator) getCriticalPathLevel(path string) ValidationLevel {
+func (v *FileValidator) getCriticalPathLevel(path string) types.ValidationLevel {
 	// Implementation would use path matching against rules.CriticalPaths
 	// For now, return empty as placeholder
 	return ""
@@ -219,13 +213,13 @@ func (v *FileValidator) GetStats() ValidationStats {
 }
 
 // NewStrategy creates a comparison strategy for the specified level
-func NewStrategy(level ValidationLevel, opts *ValidatorOptions) ComparisonStrategy {
+func NewStrategy(level types.ValidationLevel, opts *ValidatorOptions) ComparisonStrategy {
 	switch level {
-	case Quick:
+	case types.Quick:
 		return NewQuickValidator()
-	case Standard:
+	case types.Standard:
 		return NewStandardValidator(opts)
-	case Deep:
+	case types.Deep:
 		return NewDeepValidator(opts)
 	default:
 		panic(fmt.Sprintf("unsupported comparison level: %s", level))

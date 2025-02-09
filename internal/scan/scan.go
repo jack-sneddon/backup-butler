@@ -46,6 +46,7 @@ import (
 	"sync"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 	"go.uber.org/zap"
 )
 
@@ -58,19 +59,29 @@ type Scanner struct {
 	mu       sync.Mutex // Protects stats map
 }
 
+// ScannerOptions defines configuration options for Scanner
+type ScannerOptions struct {
+	ExcludePatterns  []string
+	IncludeFolders   []string
+	MaxDepth         int
+	BufferSize       int
+	DefaultLevel     types.ValidationLevel
+	ValidationConfig *ValidationConfig
+}
+
 func NewScanner(options *ScannerOptions) *Scanner {
 	if options == nil {
 		options = &ScannerOptions{
 			MaxDepth:     -1,
 			BufferSize:   32768,
-			DefaultLevel: "standard", // Default if not specified
+			DefaultLevel: types.Standard, // Default if not specified
 		}
 	}
 
 	// Set validation defaults if not provided
 	if options.ValidationConfig == nil {
 		options.ValidationConfig = &ValidationConfig{
-			DefaultLevel: "standard",
+			DefaultLevel: types.Standard,
 		}
 	}
 

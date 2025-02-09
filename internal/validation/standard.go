@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/scan"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
 // StandardValidator implements partial content comparison
@@ -29,8 +30,8 @@ func NewStandardValidator(opts *ValidatorOptions) *StandardValidator {
 	return &StandardValidator{opts: opts}
 }
 
-func (v *StandardValidator) Level() ValidationLevel {
-	return Standard
+func (v *StandardValidator) Level() types.ValidationLevel {
+	return types.Standard
 }
 
 func (v *StandardValidator) Compare(source, target *scan.FileInfo) ComparisonResult {

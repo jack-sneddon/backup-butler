@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/scan"
+	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
 // DeepValidator implements full content comparison
@@ -25,8 +26,8 @@ func NewDeepValidator(opts *ValidatorOptions) *DeepValidator {
 	return &DeepValidator{opts: opts}
 }
 
-func (v *DeepValidator) Level() ValidationLevel {
-	return Deep
+func (v *DeepValidator) Level() types.ValidationLevel {
+	return types.Deep
 }
 
 func (v *DeepValidator) Compare(source, target *scan.FileInfo) ComparisonResult {
