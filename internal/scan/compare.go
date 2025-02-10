@@ -11,13 +11,9 @@ import (
 )
 
 func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
-	// Reset stats before scanning
 	s.stats = make(map[string]*DirectoryStats)
 
 	// Scan source
-	s.log.Debugw("Starting source scan",
-		"source", source,
-		"excludePatterns", s.opts.ExcludePatterns)
 	_, err := s.Scan(source)
 	if err != nil {
 		return nil, err
@@ -25,9 +21,6 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 	sourceStats := s.stats
 
 	// Reset and scan target
-	s.log.Debugw("Starting target scan",
-		"target", target,
-		"excludePatterns", s.opts.ExcludePatterns)
 	s.stats = make(map[string]*DirectoryStats)
 	_, err = s.Scan(target)
 	if err != nil {
@@ -48,12 +41,6 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 				continue
 			}
 
-			s.log.Debugw("Checking file for comparison",
-				"path", file.Path,
-				"relPath", relPath,
-				"excludePatterns", s.opts.ExcludePatterns)
-
-			// Check if file should be excluded
 			if matchesPattern(relPath, s.opts.ExcludePatterns) {
 				s.log.Debugw("Excluding file from comparison",
 					"relPath", relPath)
@@ -61,8 +48,6 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 			}
 
 			targetPath := filepath.Join(target, relPath)
-
-			// Determine validation level based on path
 			validationLevel := s.determineValidationLevel(relPath)
 
 			comp := &FileComparison{
@@ -73,30 +58,7 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 
 			if tf := findFile(targetStats, targetPath); tf != nil {
 				comp.Target = tf
-
-				// Do initial comparison at current level
-				s.log.Debugw("Performing initial comparison",
-					"path", file.Path,
-					"level", comp.Level)
-
 				comp.Status = s.compareFiles(file, tf, comp.Level)
-
-				// If comparison shows differences and escalation is configured
-				if comp.Status == StatusDiffer &&
-					s.opts.ValidationConfig != nil &&
-					s.opts.ValidationConfig.OnMismatch != "" {
-
-					// Update level for escalated comparison
-					oldLevel := comp.Level
-					comp.Level = s.opts.ValidationConfig.OnMismatch
-					s.log.Debugw("Escalating validation",
-						"path", file.Path,
-						"fromLevel", oldLevel,
-						"toLevel", comp.Level)
-
-					// Perform comparison at escalated level
-					comp.Status = s.compareFiles(file, tf, comp.Level)
-				}
 			} else {
 				comp.Status = StatusNew
 			}
@@ -115,15 +77,7 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 				continue
 			}
 
-			s.log.Debugw("Checking target file",
-				"path", file.Path,
-				"relPath", relPath,
-				"excludePatterns", s.opts.ExcludePatterns)
-
-			// Check if file should be excluded
 			if matchesPattern(relPath, s.opts.ExcludePatterns) {
-				s.log.Debugw("Excluding target file from comparison",
-					"relPath", relPath)
 				continue
 			}
 
@@ -161,106 +115,96 @@ func findFile(stats map[string]*DirectoryStats, path string) *FileInfo {
 }
 
 func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) FileStatus {
-    s.log.Debugw("Starting file comparison",
-        "path", src.Path,
-        "level", level)
+	const modTimeToleranceSeconds = 2
 
-    // First check metadata for all levels
-    if src.Size != tgt.Size {
-        s.log.Debugw("Size mismatch",
-            "path", src.Path,
-            "sourceSize", src.Size,
-            "targetSize", tgt.Size)
-        return StatusDiffer
-    }
+	// Metadata check for all levels
+	if src.Size != tgt.Size {
+		s.log.Debugw("Size mismatch",
+			"path", src.Path,
+			"sourceSize", src.Size,
+			"targetSize", tgt.Size)
+		return StatusDiffer
+	}
 
-    // Compare modification times with tolerance
-    const modTimeToleranceSeconds = 2
-    if diff := abs(src.ModTime - tgt.ModTime); diff > modTimeToleranceSeconds {
-        s.log.Debugw("Modification time mismatch",
-            "path", src.Path,
-            "sourceTime", src.ModTime,
-            "targetTime", tgt.ModTime,
-            "difference", diff)
-        return StatusDiffer
-    }
+	if diff := abs(src.ModTime - tgt.ModTime); diff > modTimeToleranceSeconds {
+		s.log.Debugw("Modification time mismatch",
+			"path", src.Path,
+			"sourceTime", src.ModTime,
+			"targetTime", tgt.ModTime)
+		return StatusDiffer
+	}
 
-    // For Quick validation, metadata match is enough
-    if level == types.Quick {
-        s.log.Debugw("Quick validation metadata match",
-            "path", src.Path)
-        return StatusDiffer  // Return StatusDiffer to trigger escalation
-    }
+	// Quick validation stops at metadata
+	if level == types.Quick {
+		return StatusMatch
+	}
 
-    // For Standard validation, check first 32KB
-    if level == types.Standard {
-        srcHash, err := hashPartialFile(src.Path, s.opts.BufferSize)
-        if err != nil {
-            s.log.Debugw("Hash error", "path", src.Path, "error", err)
-            return StatusError
-        }
-        tgtHash, err := hashPartialFile(tgt.Path, s.opts.BufferSize)
-        if err != nil {
-            s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
-            return StatusError
-        }
+	// Standard validation: 32KB hash
+	if level == types.Standard {
+		bufferSize := s.opts.ValidationConfig.BufferSize
+		if bufferSize == 0 {
+			bufferSize = 32768
+		}
 
-        if srcHash != tgtHash {
-            s.log.Debugw("Partial content mismatch",
-                "path", src.Path,
-                "level", level,
-                "srcHash", srcHash[:8],
-                "tgtHash", tgtHash[:8])
-            return StatusDiffer
-        }
-        return StatusMatch
-    }
+		srcHash, err := hashPartialFile(src.Path, bufferSize)
+		if err != nil {
+			s.log.Debugw("Hash error", "path", src.Path, "error", err)
+			return StatusError
+		}
+		tgtHash, err := hashPartialFile(tgt.Path, bufferSize)
+		if err != nil {
+			s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
+			return StatusError
+		}
 
-    // For Deep validation, do full content hash
-    srcHash, err := hashFile(src.Path)
-    if err != nil {
-        s.log.Debugw("Hash error", "path", src.Path, "error", err)
-        return StatusError
-    }
-    tgtHash, err := hashFile(tgt.Path)
-    if err != nil {
-        s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
-        return StatusError
-    }
+		if srcHash != tgtHash {
+			s.log.Debugw("Content mismatch",
+				"path", src.Path,
+				"level", level)
+			return StatusDiffer
+		}
+		return StatusMatch
+	}
 
-    if srcHash != tgtHash {
-        s.log.Debugw("Full content mismatch",
-            "path", src.Path,
-            "level", level,
-            "srcHash", srcHash[:8],
-            "tgtHash", tgtHash[:8])
-        return StatusDiffer
-    }
+	// Deep validation: full content hash
+	srcHash, err := hashFile(src.Path)
+	if err != nil {
+		s.log.Debugw("Hash error", "path", src.Path, "error", err)
+		return StatusError
+	}
+	tgtHash, err := hashFile(tgt.Path)
+	if err != nil {
+		s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
+		return StatusError
+	}
 
-    s.log.Debugw("File comparison successful",
-        "path", src.Path,
-        "level", level)
-    return StatusMatch
+	if srcHash != tgtHash {
+		s.log.Debugw("Content mismatch",
+			"path", src.Path,
+			"level", level)
+		return StatusDiffer
+	}
+	return StatusMatch
 }
 
 // hashPartialFile reads and hashes only the first bufferSize bytes
 func hashPartialFile(path string, bufferSize int) (string, error) {
-    f, err := os.Open(path)
-    if err != nil {
-        return "", err
-    }
-    defer f.Close()
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
 
-    h := sha256.New()
-    buf := make([]byte, bufferSize)
+	h := sha256.New()
+	buf := make([]byte, bufferSize)
 
-    n, err := io.ReadFull(f, buf)
-    if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-        return "", err
-    }
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return "", err
+	}
 
-    h.Write(buf[:n])
-    return string(h.Sum(nil)), nil
+	h.Write(buf[:n])
+	return string(h.Sum(nil)), nil
 }
 
 func abs(n int64) int64 {

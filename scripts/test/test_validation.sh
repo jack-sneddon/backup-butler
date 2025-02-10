@@ -204,43 +204,29 @@ test_quick_comparison() {
 test_standard_comparison() {
     printf "Testing standard comparison...\n"
     
-    # Test content differences
-    printf "  Testing content differences... "
-    #output=$(./bin/backup-butler check -c "${TEST_DIR}/config/config_standard.yaml" 2>&1)
+    # Test content differences within first 32KB
+    printf "  Testing early content differences... "
+    dd if=/dev/urandom of="$TEST_DIR/content/diff_content.dat" bs=1K count=16 2>/dev/null
+    dd if=/dev/urandom of="$TEST_DIR-target/content/diff_content.dat" bs=1K count=16 2>/dev/null
+
     output=$(run_backup_butler check -c "${TEST_DIR}/config/config_standard.yaml" 2>&1)
     if [[ $output =~ "content/diff_content.dat" && $output =~ "*" ]]; then
         printf "${GREEN}PASS${NC}\n"
-        if $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
     else
         printf "${RED}FAIL${NC}\n"
-        echo "Command output:"
-        echo "-------------"
-        echo "$output"
-        echo "-------------"
         return 1
     fi
 
-    # Test partial content differences
-    printf "  Testing partial content... "
+    # Test identical first 32KB
+    printf "  Testing identical first 32KB... "
+    dd if=/dev/urandom of="$TEST_DIR/content/partial.dat" bs=1K count=32 2>/dev/null
+    cp "$TEST_DIR/content/partial.dat" "$TEST_DIR-target/"
+    dd if=/dev/urandom of="$TEST_DIR-target/content/partial.dat" bs=1K seek=32 count=32 conv=notrunc 2>/dev/null
+
     if [[ $output =~ "content/partial.dat" && $output =~ "=" ]]; then
         printf "${GREEN}PASS${NC}\n"
-        if $VERBOSE; then
-            echo "Command output:"
-            echo "-------------"
-            echo "$output"
-            echo "-------------"
-        fi
     else
         printf "${RED}FAIL${NC}\n"
-        echo "Command output:"
-        echo "-------------"
-        echo "$output"
-        echo "-------------"
         return 1
     fi
 
@@ -355,90 +341,6 @@ EOL
     return 0
 }
 
-test_validation_escalation() {
-    printf "Testing validation level escalation...\n"
-
-    # Create config for quick->standard escalation
-    cat > "${TEST_DIR}/config/config_quick_standard.yaml" << EOL
-source: "${TEST_DIR}"
-target: "${TEST_DIR}-target"
-validation:
-  default_level: "quick"
-  on_mismatch: "standard"
-  buffer_size: 32768
-  hash_algorithm: "sha256"
-exclude:
-  - "config/*"
-  - "*.tmp"
-  - "*.bak"
-EOL
-
-    # Create config for standard->deep escalation
-    cat > "${TEST_DIR}/config/config_standard_deep.yaml" << EOL
-source: "${TEST_DIR}"
-target: "${TEST_DIR}-target"
-validation:
-  default_level: "standard"
-  on_mismatch: "deep"
-  buffer_size: 32768
-  hash_algorithm: "sha256"
-exclude:
-  - "config/*"
-  - "*.tmp"
-  - "*.bak"
-EOL
-
-    # Test quick to standard escalation
-    printf "  Testing quick to standard escalation... "
-    # Create file with same size but different content
-    dd if=/dev/urandom of="$TEST_DIR/escalate_quick.dat" bs=1M count=1 2>/dev/null
-    dd if=/dev/urandom of="$TEST_DIR-target/escalate_quick.dat" bs=1M count=1 2>/dev/null
-
-    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_quick_standard.yaml" 2>&1)
-
-    if [[ $output =~ "    * escalate_quick.dat [standard]" ]]; then
-        printf "${GREEN}PASS${NC}\n"
-        $VERBOSE && echo "$output"
-    else
-        printf "${RED}FAIL${NC}\n"
-        echo "Expected pattern: '    * escalate_quick.dat [standard]'"
-        echo "Got output:"
-        echo "$output"
-        return 1
-    fi
-
-    # Test standard to deep escalation
-    printf "  Testing standard to deep escalation... "
-    # Create file that matches in first 32KB but differs after
-    dd if=/dev/urandom of="$TEST_DIR/escalate_standard.dat" bs=1M count=2 2>/dev/null
-    cp "$TEST_DIR/escalate_standard.dat" "$TEST_DIR-target/"
-    # Modify the file after the first 32KB
-    dd if=/dev/urandom of="$TEST_DIR-target/escalate_standard.dat" bs=1K seek=32 count=32 conv=notrunc 2>/dev/null
-
-    output=$(run_backup_butler check -c "${TEST_DIR}/config/config_standard_deep.yaml" 2>&1)
-
-    if [[ $output =~ "    * escalate_standard.dat [deep]" ]]; then
-        printf "${GREEN}PASS${NC}\n"
-        $VERBOSE && echo "$output"
-    else
-        printf "${RED}FAIL${NC}\n"
-        echo "Expected pattern: '    * escalate_standard.dat [deep]'"
-        echo "Got output:"
-        echo "$output"
-        return 1
-    fi
-
-    # Cleanup test files
-    rm -f "$TEST_DIR/escalate_quick.dat"
-    rm -f "$TEST_DIR-target/escalate_quick.dat"
-    rm -f "$TEST_DIR/escalate_standard.dat"
-    rm -f "$TEST_DIR-target/escalate_standard.dat"
-    rm -f "$TEST_DIR/config/config_quick_standard.yaml"
-    rm -f "$TEST_DIR/config/config_standard_deep.yaml"
-
-    return 0
-}
-
 
 main() {
     local failed=0
@@ -447,7 +349,6 @@ main() {
     setup_test_env
 
     test_file_status || failed=1
-    test_validation_escalation || failed=1
 
     test_quick_comparison || failed=1
     test_standard_comparison || failed=1

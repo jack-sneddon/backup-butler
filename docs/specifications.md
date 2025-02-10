@@ -94,35 +94,56 @@ validation:
 - **Use Case**: periodic full verification
 - **Limitations**: Resource intensive, time-consuming
 
-### 5.3 Validation Algorithm
+## 5. File Validation and Comparison
+
+### 5.1 Validation Levels
+
+Validation progresses from lightweight to thorough checks, balancing performance against accuracy:
+
+Configuration will define what level to go for, but it will check the lower levels first.  If they pass, it will escallate to the next level until it reaches what was defined in configuration.
+
+Quick:
+- Metadata comparison only (size, mtime)
+- Performance: ~0.1ms per file
+- Use case: Detecting obvious changes
+
+Standard:
+- Metadata + partial content hash (first 32KB)
+- Performance: ~1.9ms per file
+- Use case: Balanced validation for most files
+
+Deep:
+- Metadata + full content hash
+- Performance: ~12s per GB
+- Use case: Complete verification when needed
+
+### 5.2 Validation Algorithm
 
 ```bash
 For each file:
-1. Determine validation level based on:
-   - Scheduled deep validation status
-   - Default level setting
+1. Check metadata (all levels):
+   - Compare file sizes
+   - Compare modification times (2s tolerance)
+   - Return differ if any mismatch
 
-2. Perform validation:
+2. Based on configured level:
    QUICK:
-     Check metadata
-     If differs AND on_mismatch = STANDARD:
-       Perform standard validation
-     If differs AND on_mismatch = DEEP:
-       Perform deep validation
+     Return match if metadata matches
 
    STANDARD:
-     Check metadata
-     Check first 32KB hash
+     Calculate 32KB hash
+     Return differ if hashes mismatch
+     Return match if hashes match
 
    DEEP:
-     Check metadata
-     Check full file hash
+     Calculate full content hash
+     Return differ if hashes mismatch
+     Return match if hashes match
 
 3. Record results:
    - Validation level used
+   - Status (match/differ)
    - Time taken
-   - Status
-   - Bytes processed
 ```
 
 ## 6. Command Interface
