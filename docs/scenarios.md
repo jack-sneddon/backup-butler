@@ -92,42 +92,30 @@ AND:   Shows build details
 # Add to scenarios.md under "Common Daily Operations"
 
 ### Quick Validation Check
-```
+
+```bash
 GIVEN: User wants to quickly verify backup integrity
 WHEN:  User runs 'backup-butler check --level quick'
 THEN:  Tool performs fast metadata comparison
-AND:   Shows results:
-      - Files matching by size/time
-      - Files with metadata differences
-      - Files only in source/target
 AND:   Completes quickly (≈0.1ms per file)
 ```
 
 ### Standard Validation Check
-```
-GIVEN: User wants more thorough backup verification
+
+```bash
+GIVEN: User wants regular backup verification
 WHEN:  User runs 'backup-butler check --level standard'
 THEN:  Tool performs metadata and partial content check
-AND:   Shows results:
-      - Files matching completely
-      - Files with content differences
-      - Files requiring full validation
-AND:   Shows progress during operation
+AND:   Shows detailed progress
 ```
 
 ### Deep Validation Check
-```
+
+```bash
 GIVEN: User requires complete backup verification
 WHEN:  User runs 'backup-butler check --level deep'
 THEN:  Tool performs full content validation
-AND:   Shows detailed progress:
-      - Current file being checked
-      - Data processed
-      - Estimated time remaining
-AND:   Provides comprehensive report:
-      - Files fully matching
-      - Files with any differences
-      - Full validation statistics
+AND:   Shows validation progress and statistics
 ```
 
 ## Error Scenarios

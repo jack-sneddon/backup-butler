@@ -134,42 +134,43 @@ AND:   Exit with non-zero status
 ## Validation Operations
 
 ### Case 13: Quick Validation
-```
+
+```bash
 GIVEN: File exists in source and target
 AND:   Quick validation is configured
 THEN:  Compare:
       - File sizes
       - Modification times (2-second tolerance)
-IF:    Both match
-THEN:  Mark as valid (=)
-ELSE:  Escalate if configured
-      OR Mark as different (*)
+RETURN: StatusMatch if metadata matches
 ```
 
 ### Case 14: Standard Validation
-```
+
+```bash
 GIVEN: File exists in source and target
 AND:   Standard validation is configured
-THEN:  First perform quick validation
-IF:    Quick validation passes
-THEN:  Read first 32KB of both files
-AND:   Calculate hash of these buffers
-IF:    Hashes match
-THEN:  Mark as valid (=)
-ELSE:  Escalate if configured
-      OR Mark as different (*)
+THEN:  Check metadata (file size, modification time) as per quick validation
+IF:    Quick validation mismatch
+THEN : RETURN StatusDiffer as mismatch
+ELSE:  Calculate hash of first 32KB if metadata matches
+RETURN: StatusDiffer on any mismatch
 ```
 
 ### Case 15: Deep Validation
-```
+
+```bash
 GIVEN: File exists in source and target
 AND:   Deep validation is configured
-THEN:  First perform quick validation
-IF:    Quick validation passes
-THEN:  Calculate hash of entire file contents
-IF:    Hashes match
-THEN:  Mark as valid (=)
-ELSE:  Mark as different (*)
+THEN:  Check metadata
+IF:    Quick validation mismatch
+THEN:  RETURN StatusDiffer as mismatch
+
+ELSE IF:  Calculate hash of first 32KB mismatch
+THEN:  RETURN StatusDiffer as mismatch
+
+ELSE:  Calculate full content hash matche
+IF:    Hashes do not match
+RETURN: StatusDiffer on any mismatch
 ```
 
 ## Error Handling

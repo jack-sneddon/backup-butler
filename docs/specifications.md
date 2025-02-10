@@ -96,7 +96,18 @@ validation:
 
 ## 5. File Validation and Comparison
 
-### 5.1 Validation Levels
+### 5.1 Validation Strategy
+
+Each validation level provides a different balance of performance vs thoroughness:
+
+```yaml
+validation:
+  # Default validation level
+  default_level: "quick"      # quick, standard, deep
+  buffer_size: 32768         # bytes for partial content validation
+  hash_algorithm: "sha256"   # md5, sha1, sha256
+
+### 5. Validation Levels
 
 Validation progresses from lightweight to thorough checks, balancing performance against accuracy:
 
@@ -145,6 +156,28 @@ For each file:
    - Status (match/differ)
    - Time taken
 ```
+
+### 5.3 Validation Algorithm
+
+For each file:
+1. Check metadata (always):
+   - Compare file sizes
+   - Compare modification times (2s tolerance)
+   - If different: return StatusDiffer
+
+2. Based on configured level:
+   QUICK:
+     - Return StatusMatch (metadata matches)
+
+   STANDARD:
+     - Calculate hash of first 32KB
+     - Return StatusDiffer if hashes different
+     - Return StatusMatch if hashes match
+
+   DEEP:
+     - Calculate full content hash
+     - Return StatusDiffer if hashes different
+     - Return StatusMatch if hashes match
 
 ## 6. Command Interface
 
