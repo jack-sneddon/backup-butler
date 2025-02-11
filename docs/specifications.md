@@ -160,10 +160,12 @@ Quick:
 
 - Metadata mismatch → fail
 - Metadata match → pass
+
 Standard:
 - Metadata mismatch → fail
 - Metadata match + content mismatch → fail
 - Metadata match + content match → pass
+
 Deep:
 - Metadata mismatch → fail
 - Metadata match + partial content mismatch → fail

@@ -1,0 +1,48 @@
+# Sample configuration for Backup Butler
+# Place this file at ~/.backup-butler/config.yaml or specify with -c flag
+
+# Core directories
+source: "/Users/photos/2024"          # Source directory to backup
+target: "/Volumes/backup/photos/2024"  # Target directory for backup
+
+# Optional: Specific folders to process (relative to source)
+# If empty, all folders in source will be processed
+folders:
+  - "Vacation"
+  - "Family"
+  - "Events"
+
+# File patterns to exclude
+exclude:
+  - "*.tmp"
+  - ".DS_Store"
+  - "Thumbs.db"
+  - ".Trashes"
+  - "._*"
+
+# Validation settings
+comparison:
+  # Hash algorithm for content verification
+  algorithm: "sha256"  # Options: md5, sha1, sha256
+  
+  # Validation level:
+  # - quick:    Size and modification time only (~0.1ms per file)
+  # - standard: Includes partial content hash (~1.9ms per file)
+  # - deep:     Full content verification (~12s per GB)
+  level: "standard"
+  
+  # Buffer size for partial content validation (bytes)
+  buffer_size: 32768  # 32KB default
+
+# Storage device optimization
+storage:
+  # Device type (currently only hdd supported)
+  device_type: "hdd"
+  
+  # Maximum concurrent operations
+  max_threads: 4
+
+# Logging configuration
+logging:
+  # Available levels: debug, info, warn, error
+  level: "info"

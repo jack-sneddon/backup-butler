@@ -3,12 +3,32 @@ package sync
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/jack-sneddon/backup-butler/internal/config"
 	"github.com/jack-sneddon/backup-butler/internal/logger"
+	"github.com/jack-sneddon/backup-butler/internal/processor"
 	"github.com/spf13/cobra"
 )
+
+func NewSyncCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "sync",
+		Short: "Synchronize source to target using configuration",
+		RunE:  runSync,
+	}
+
+	// Required flags
+	cmd.Flags().StringSliceP("folders", "d", []string{}, "specific folders to sync")
+
+	// TODO: Implement these flags in Phase 4
+	cmd.Flags().BoolP("resume", "r", false, "resume from last checkpoint")
+	cmd.Flags().BoolP("force", "f", false, "override safety checks")
+	cmd.Flags().BoolP("quiet", "q", false, "suppress configuration output") // Add this
+
+	return cmd
+}
 
 func runSync(cmd *cobra.Command, args []string) error {
 	log := logger.Get()
@@ -16,24 +36,35 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	log.Debugw("Starting sync command execution")
 	log.Infow("Loading configuration", "file", cfgFile)
-	log.Warnw("This is a stub implementation") // Add warning message
+
+	cfg, err := loadAndValidateConfig(cmd, cfgFile)
+	if err != nil {
+		return err
+	}
+
+	displayConfiguration(cmd, cfg)
+
+	return processDirectories(cfg)
+}
+
+func loadAndValidateConfig(cmd *cobra.Command, cfgFile string) (*config.Config, error) {
+	log := logger.Get()
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
 		msg := strings.TrimPrefix(err.Error(), "invalid configuration: ")
 		msg = strings.TrimPrefix(msg, "failed to load config: ")
 		log.Error(msg)
-		return fmt.Errorf("%s", msg)
+		return nil, fmt.Errorf("%s", msg)
 	}
 
 	if cmd.Flag("log-level").Value.String() == "debug" {
-		fmt.Printf("\nConfiguration:\n")
-		// Only show configuration in debug mode
 		log.Debugw("Configuration loaded successfully",
 			"source", cfg.Source,
 			"target", cfg.Target)
 	}
-	// Get folder overrides if specified
+
+	// Handle folder overrides
 	if folders, _ := cmd.Flags().GetStringSlice("folders"); len(folders) > 0 {
 		log.Infow("Using folder override", "folders", folders)
 		cfg.Folders = folders
@@ -44,6 +75,15 @@ func runSync(cmd *cobra.Command, args []string) error {
 		"target", cfg.Target,
 		"folders", cfg.Folders,
 		"deviceType", cfg.Storage.DeviceType)
+
+	return cfg, nil
+}
+
+func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
+	// Skip display if quiet flag is set
+	if quiet, _ := cmd.Flags().GetBool("quiet"); quiet {
+		return
+	}
 
 	fmt.Println("\nConfiguration:")
 	fmt.Printf("├── Locations\n")
@@ -68,21 +108,50 @@ func runSync(cmd *cobra.Command, args []string) error {
 	fmt.Printf("└── Validation\n")
 	fmt.Printf("    ├── Algorithm: %s\n", cfg.Comparison.Algorithm)
 	fmt.Printf("    └── Level: %s\n", cfg.Comparison.Level)
+}
 
+func processDirectories(cfg *config.Config) error {
+	opts := &processor.ProcessorOptions{
+		PreserveMetadata: true,
+		BufferSize:       cfg.Comparison.BufferSize,
+	}
+	proc := processor.NewDirectoryProcessor(opts)
+
+	if len(cfg.Folders) > 0 {
+		return processFolders(cfg, proc)
+	}
+
+	return processRootDirectory(cfg, proc)
+}
+
+func processFolders(cfg *config.Config, proc processor.DirectoryProcessor) error {
+	log := logger.Get()
+
+	for _, folder := range cfg.Folders {
+		sourcePath := filepath.Join(cfg.Source, folder)
+		targetPath := filepath.Join(cfg.Target, folder)
+
+		log.Infow("Processing folder",
+			"folder", folder,
+			"source", sourcePath,
+			"target", targetPath)
+
+		if err := proc.ProcessDirectory(sourcePath, targetPath); err != nil {
+			log.Errorw("Failed to process folder",
+				"folder", folder,
+				"error", err)
+			return err
+		}
+	}
 	return nil
 }
 
-// internal/commands/sync/sync.go
-func NewSyncCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "sync",
-		Short: "Synchronize source to target using configuration",
-		RunE:  runSync,
+func processRootDirectory(cfg *config.Config, proc processor.DirectoryProcessor) error {
+	log := logger.Get()
+
+	if err := proc.ProcessDirectory(cfg.Source, cfg.Target); err != nil {
+		log.Errorw("Failed to process root directory", "error", err)
+		return err
 	}
-
-	cmd.Flags().StringSliceP("folders", "d", []string{}, "specific folders to sync")
-	cmd.Flags().BoolP("resume", "r", false, "resume from last checkpoint")
-	cmd.Flags().BoolP("force", "f", false, "override safety checks")
-
-	return cmd
+	return nil
 }
