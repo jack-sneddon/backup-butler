@@ -39,6 +39,15 @@ func (v *DeepValidator) Compare(source, target *scan.FileInfo) ComparisonResult 
 		return quickResult
 	}
 
+	// Then do standard comparison
+	standardResult := NewStandardValidator(&ValidatorOptions{
+		BufferSize: v.opts.BufferSize,
+		Algorithm:  v.opts.Algorithm,
+	}).Compare(source, target)
+	if !standardResult.Equal {
+		return standardResult
+	}
+
 	// Open both files
 	srcFile, err := os.Open(source.Path)
 	if err != nil {

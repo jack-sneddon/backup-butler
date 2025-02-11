@@ -65,23 +65,23 @@ type ScannerOptions struct {
 	IncludeFolders   []string
 	MaxDepth         int
 	BufferSize       int
-	DefaultLevel     types.ValidationLevel
+	Level            types.ValidationLevel
 	ValidationConfig *ValidationConfig
 }
 
 func NewScanner(options *ScannerOptions) *Scanner {
 	if options == nil {
 		options = &ScannerOptions{
-			MaxDepth:     -1,
-			BufferSize:   32768,
-			DefaultLevel: types.Standard, // Default if not specified
+			MaxDepth:   -1,
+			BufferSize: 32768,
+			Level:      types.Standard, // Default if not specified
 		}
 	}
 
 	// Set validation defaults if not provided
 	if options.ValidationConfig == nil {
 		options.ValidationConfig = &ValidationConfig{
-			DefaultLevel: types.Standard,
+			Level: types.Standard,
 		}
 	}
 

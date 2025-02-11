@@ -76,7 +76,6 @@ type FileValidator struct {
 // ValidationRules defines integrity requirements
 type ValidationRules struct {
 	CriticalPaths []CriticalPathRule
-	OnMismatch    types.ValidationLevel
 	ScheduledDeep *ScheduledValidation
 }
 
@@ -151,12 +150,6 @@ func (v *FileValidator) Validate(source, target *scan.FileInfo) ValidationResult
 		v.stats.StandardChecks++
 	case types.Deep:
 		v.stats.DeepChecks++
-	}
-
-	// Check if we need to escalate validation level
-	if !result.Equal && v.rules.OnMismatch > level {
-		newStrategy := NewStrategy(v.rules.OnMismatch, nil)
-		result = newStrategy.Compare(source, target)
 	}
 
 	// Validate against rules

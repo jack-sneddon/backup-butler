@@ -98,8 +98,8 @@ func (s *Scanner) determineValidationLevel(path string) types.ValidationLevel {
 	// Return the default validation level
 	s.log.Debugw("Using default validation level",
 		"path", path,
-		"level", s.opts.DefaultLevel)
-	return s.opts.DefaultLevel
+		"level", s.opts.Level)
+	return s.opts.Level
 }
 
 func findFile(stats map[string]*DirectoryStats, path string) *FileInfo {

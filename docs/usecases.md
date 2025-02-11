@@ -216,37 +216,44 @@ AND:   Exit gracefully with error status
 ```
 
 ### Case 20: Quick to Standard Escalation
-```
+
+```bash
 GIVEN: File exists in source and target
-AND:   Quick validation is configured
-AND:   on_mismatch = "standard"
-WHEN:  Quick validation fails (size/time mismatch)
-THEN:  Automatically escalate to standard validation
-AND:   Read first 32KB of both files
-AND:   Calculate partial content hashes
-AND:   Mark final status with [standard] level indicator
+AND:   Standard validation is configured
+WHEN:  Validation runs
+THEN:  Quick validation runs first
+IF:    Quick validation shows mismatch
+THEN:  Return mismatch immediately
+ELSE:  Proceed with standard (partial content) validation
 ```
 
 ### Case 21: Standard to Deep Escalation
-```
+
+```bash
 GIVEN: File exists in source and target
-AND:   Standard validation is configured
-AND:   on_mismatch = "deep"
-WHEN:  Standard validation fails (partial content differs)
-THEN:  Automatically escalate to deep validation
-AND:   Calculate full file hashes
-AND:   Mark final status with [deep] level indicator
+AND:   Deep validation is configured
+WHEN:  Validation runs
+THEN:  Quick validation runs first
+IF:    Quick validation shows mismatch
+THEN:  Return mismatch immediately
+ELSE:  Standard validation runs
+IF:    Standard validation shows mismatch
+THEN:  Return mismatch immediately
+ELSE:  Proceed with deep (full content) validation
 ```
 
 ### Case 22: Multiple Level Escalation
-```
-GIVEN: File exists in source and target
-AND:   Quick validation is configured
-AND:   on_mismatch = "deep"
-WHEN:  Quick validation fails
-THEN:  Skip standard validation
-AND:   Escalate directly to deep validation
-AND:   Mark final status with [deep] level indicator
+
+```bash
+GIVEN: Files are being validated
+WHEN:  Results are displayed
+THEN:  Show validation level used for final result:
+= file1.txt [quick]      # Matched at quick check
+* file2.txt [quick]      # Mismatched at quick check
+= file3.txt [standard]   # Matched after standard check
+* file4.txt [standard]   # Mismatched at standard check
+= file5.txt [deep]       # Matched after deep check
+* file6.txt [deep]       # Mismatched at deep check
 ```
 
 ### Case 23: Escalation with Errors

@@ -58,10 +58,7 @@ Total files: 207,163
 ```yaml
 validation:
   # Default validation level
-  default_level: "quick"      # quick, standard, deep
-  
-  # Validation level when metadata differs
-  on_mismatch: "standard"     # none, standard, deep
+  level: "quick"      # quick, standard, deep
   
   # Performance tuning
   buffer_size: 32768         # bytes for partial content validation
@@ -103,7 +100,7 @@ Each validation level provides a different balance of performance vs thoroughnes
 ```yaml
 validation:
   # Default validation level
-  default_level: "quick"      # quick, standard, deep
+  level: "quick"      # quick, standard, deep
   buffer_size: 32768         # bytes for partial content validation
   hash_algorithm: "sha256"   # md5, sha1, sha256
 
@@ -111,7 +108,7 @@ validation:
 
 Validation progresses from lightweight to thorough checks, balancing performance against accuracy:
 
-Configuration will define what level to go for, but it will check the lower levels first.  If they pass, it will escallate to the next level until it reaches what was defined in configuration.
+Configuration will define what level to go for, but it will check the lower levels first.  If they pass, it will /onlate to the next level until it reaches what was defined in configuration.
 
 Quick:
 - Metadata comparison only (size, mtime)
@@ -159,7 +156,22 @@ For each file:
 
 ### 5.3 Validation Algorithm
 
+Quick:
+
+- Metadata mismatch → fail
+- Metadata match → pass
+Standard:
+- Metadata mismatch → fail
+- Metadata match + content mismatch → fail
+- Metadata match + content match → pass
+Deep:
+- Metadata mismatch → fail
+- Metadata match + partial content mismatch → fail
+- Metadata match + partial content match + full content mismatch → fail
+- All checks pass → pass
+
 For each file:
+
 1. Check metadata (always):
    - Compare file sizes
    - Compare modification times (2s tolerance)

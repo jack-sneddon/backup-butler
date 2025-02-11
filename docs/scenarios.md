@@ -144,7 +144,6 @@ AND:   Includes errors in final report
 ### Quick Validation with Standard Escalation
 ```
 GIVEN: User has configured quick validation
-AND:   on_mismatch = "standard" in config
 WHEN:  User runs 'backup-butler check'
 THEN:  Tool starts with quick validation
 AND:   When metadata differences found:
@@ -156,7 +155,6 @@ AND:   When metadata differences found:
 ### Standard Validation with Deep Escalation
 ```
 GIVEN: User has configured standard validation
-AND:   on_mismatch = "deep" in config
 WHEN:  User runs 'backup-butler check'
 THEN:  Tool starts with standard validation
 AND:   When partial content differs:

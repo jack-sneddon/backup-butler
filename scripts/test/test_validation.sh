@@ -97,8 +97,7 @@ setup_test_env() {
 source: "${TEST_DIR}"
 target: "${TEST_DIR}-target"
 validation:
-  default_level: "quick"
-  on_mismatch: "none"
+  level: "quick"
   buffer_size: 32768
   hash_algorithm: "sha256"
 exclude:
@@ -111,8 +110,7 @@ EOL
 source: "${TEST_DIR}"
 target: "${TEST_DIR}-target"
 validation:
-  default_level: "standard"
-  on_mismatch: "none"
+  level: "standard"
   buffer_size: 32768
   hash_algorithm: "sha256"
 exclude:
@@ -125,8 +123,7 @@ EOL
 source: "${TEST_DIR}"
 target: "${TEST_DIR}-target"
 validation:
-  default_level: "deep"
-  on_mismatch: "none"
+  level: "deep"
   buffer_size: 1048576
   hash_algorithm: "sha256"
 exclude:
@@ -300,7 +297,7 @@ test_file_status() {
 source: "${TEST_DIR}"
 target: "${TEST_DIR}-target"
 validation:
-  default_level: "standard"
+  level: "standard"
   buffer_size: 32768
   hash_algorithm: "sha256"
 exclude:
@@ -341,6 +338,88 @@ EOL
     return 0
 }
 
+test_deep_validation_scenarios() {
+    printf "Testing deep validation failure scenarios...\n"
+
+    # Setup for deep validation tests
+    local test_dir="${TEST_DIR}/deep_scenarios"
+    mkdir -p "$test_dir"
+    mkdir -p "$test_dir-target"
+
+    # Create deep validation config
+    cat > "${TEST_DIR}/config/config_deep_test.yaml" << EOL
+source: "${test_dir}"
+target: "${test_dir}-target"
+validation:
+  level: "deep"
+  buffer_size: 32768
+  hash_algorithm: "sha256"
+exclude:
+  - "config/*"
+  - "*.tmp"
+  - "*.bak"
+EOL
+
+    # Test 1: Metadata mismatch → fail
+    printf "  Testing metadata mismatch (deep)... "
+    dd if=/dev/urandom of="$test_dir/meta_diff.dat" bs=1M count=1 2>/dev/null
+    cp "$test_dir/meta_diff.dat" "$test_dir-target/"
+    # Change modification time of target file
+    touch -t 202001010000 "$test_dir-target/meta_diff.dat"
+
+    output=$(./bin/backup-butler check -c "${TEST_DIR}/config/config_deep_test.yaml" 2>&1)
+    if [[ $output =~ "meta_diff.dat" && $output =~ "*" && $output =~ "[deep]" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected: File should be marked as different (*) with deep validation level"
+        echo "Got: $output"
+        return 1
+    fi
+
+    # Test 2: Metadata match + partial content mismatch
+    printf "  Testing partial content mismatch (deep)... "
+    dd if=/dev/urandom of="$test_dir/partial_diff.dat" bs=1K count=32 2>/dev/null
+    cp "$test_dir/partial_diff.dat" "$test_dir-target/"
+    # Modify first 32KB of target file
+    dd if=/dev/urandom of="$test_dir-target/partial_diff.dat" bs=1K count=32 conv=notrunc 2>/dev/null
+
+    output=$(./bin/backup-butler check -c "${TEST_DIR}/config/config_deep_test.yaml" 2>&1)
+    if [[ $output =~ "partial_diff.dat" && $output =~ "*" && $output =~ "[deep]" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected: File should fail at standard validation level"
+        echo "Got: $output"
+        return 1
+    fi
+
+    # Test 3: Metadata match + partial content match + full content mismatch
+    printf "  Testing full content mismatch (deep)... "
+    # Create 2MB file
+    dd if=/dev/urandom of="$test_dir/full_diff.dat" bs=1M count=2 2>/dev/null
+    # Copy first 32KB to target to ensure partial match
+    dd if="$test_dir/full_diff.dat" of="$test_dir-target/full_diff.dat" bs=1K count=32 2>/dev/null
+    # Add different content after 32KB
+    dd if=/dev/urandom of="$test_dir-target/full_diff.dat" bs=1K seek=32 count=2016 2>/dev/null
+
+    output=$(./bin/backup-butler check -c "${TEST_DIR}/config/config_deep_test.yaml" 2>&1)
+    if [[ $output =~ "full_diff.dat" && $output =~ "*" && $output =~ "[deep]" ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+    else
+        printf "${RED}FAIL${NC}\n"
+        echo "Expected: File should fail at deep validation level"
+        echo "Got: $output"
+        return 1
+    fi
+
+    # Cleanup
+    rm -rf "$test_dir" "$test_dir-target"
+}
+
 
 main() {
     local failed=0
@@ -353,6 +432,8 @@ main() {
     test_quick_comparison || failed=1
     test_standard_comparison || failed=1
     test_deep_comparison || failed=1
+
+    test_deep_validation_scenarios || failed=1
 
     rm -rf "$TEST_ROOT"
 

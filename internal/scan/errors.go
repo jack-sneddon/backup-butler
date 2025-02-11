@@ -30,8 +30,7 @@ func NewScanError(path string, op string, err error) *ScanError {
 }
 
 type ValidationConfig struct {
-	DefaultLevel  types.ValidationLevel `yaml:"default_level"`
-	OnMismatch    types.ValidationLevel `yaml:"on_mismatch"`
+	Level         types.ValidationLevel `yaml:"level"`
 	BufferSize    int                   `yaml:"buffer_size"`
 	HashAlgorithm string                `yaml:"hash_algorithm"`
 }
@@ -126,8 +125,7 @@ func matchesPattern(path string, patterns []string) bool {
 func (v *ValidationConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Temporary struct using strings
 	type TempConfig struct {
-		DefaultLevel  string `yaml:"default_level"`
-		OnMismatch    string `yaml:"on_mismatch"`
+		Level         string `yaml:"level"`
 		BufferSize    int    `yaml:"buffer_size"`
 		HashAlgorithm string `yaml:"hash_algorithm"`
 	}
@@ -138,11 +136,8 @@ func (v *ValidationConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 	}
 
 	// Convert strings to ValidationLevel
-	if temp.DefaultLevel != "" {
-		v.DefaultLevel = types.ValidationLevel(temp.DefaultLevel)
-	}
-	if temp.OnMismatch != "" {
-		v.OnMismatch = types.ValidationLevel(temp.OnMismatch)
+	if temp.Level != "" {
+		v.Level = types.ValidationLevel(temp.Level)
 	}
 	v.BufferSize = temp.BufferSize
 	v.HashAlgorithm = temp.HashAlgorithm
