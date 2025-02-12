@@ -2,6 +2,7 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/jack-sneddon/backup-butler/internal/commands/check"
@@ -17,6 +18,23 @@ var rootCmd = &cobra.Command{
 	Short: "A reliable media backup utility with data validation",
 	Long: `Backup Butler is a command-line utility designed for reliable media backup 
     with high data integrity validation.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Setup logging first
+		if level := cmd.Flags().Lookup("log-level").Value.String(); level != "" {
+			if err := logger.SetLevel(level); err != nil {
+				return err
+			}
+		}
+
+		// Only print banner for debug/info levels
+		logLevel := cmd.Flags().Lookup("log-level").Value.String()
+		if logLevel != "warn" && logLevel != "error" {
+			fmt.Printf("Backup Butler v0.1.0\n")
+			fmt.Println("====================")
+		}
+
+		return nil
+	},
 }
 
 func Execute() {

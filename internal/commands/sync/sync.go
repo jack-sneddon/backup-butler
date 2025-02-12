@@ -80,8 +80,12 @@ func loadAndValidateConfig(cmd *cobra.Command, cfgFile string) (*config.Config, 
 }
 
 func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
-	// Skip display if quiet flag is set
-	if quiet, _ := cmd.Flags().GetBool("quiet"); quiet {
+	// Get the logger
+	// log := logger.Get()
+
+	// Only display configuration at info level or below
+	if cmd.Flag("log-level").Value.String() == "warn" ||
+		cmd.Flag("log-level").Value.String() == "error" {
 		return
 	}
 

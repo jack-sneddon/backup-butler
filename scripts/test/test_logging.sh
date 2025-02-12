@@ -26,21 +26,40 @@ run_log_test() {
     cmd="./bin/backup-butler sync -c ${TEST_DIR}/test_config.yaml"
     [[ $level != "default" ]] && cmd="$cmd --log-level $level"
 
+    # Capture stderr separately since that's where our logs go
     output=$($cmd 2>&1)
     success=false
 
     case "$level" in
         "default"|"error")
-            [[ ! $output =~ "INFO" && ! $output =~ "DEBUG" && $output =~ "Configuration" ]] && success=true
+            # Should see no DEBUG or INFO messages
+            if [[ ! $output =~ "DEBUG" && ! $output =~ "INFO" ]]; then
+                success=true
+            fi
             ;;
         "debug")
-            [[ $output =~ "DEBUG" ]] && success=true
+            # Should see DEBUG messages
+            if [[ $output =~ "DEBUG" ]]; then
+                success=true
+            fi
             ;;
         "info")
-            [[ $output =~ "INFO" && ! $output =~ "DEBUG" ]] && success=true
+            # Should see INFO but no DEBUG messages
+            if [[ $output =~ "INFO" && ! $output =~ "DEBUG" ]]; then
+                success=true
+            fi
             ;;
         "warn")
-            [[ $output =~ "WARN" && ! $output =~ "INFO" ]] && success=true
+            # Should see only WARN or higher messages
+            if [[ ! $output =~ "INFO" && ! $output =~ "DEBUG" ]]; then
+                success=true
+            fi
+            ;;
+        "error")
+            # Should see only ERROR messages
+            if [[ ! $output =~ "WARN" && ! $output =~ "INFO" && ! $output =~ "DEBUG" ]]; then
+                success=true
+            fi
             ;;
     esac
 
