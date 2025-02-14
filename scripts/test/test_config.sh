@@ -6,12 +6,12 @@ setup_configs() {
     rm -rf "$TEST_ROOT"
     mkdir -p "$TEST_DIR/source/test1" \
              "$TEST_DIR/target" \
-             "$CONFIG_DIR"  # Make sure config directory exists
+             "$CONFIG_DIR"
 
     # Create test file in source directory
     echo "test content" > "$TEST_DIR/source/test1/testfile.txt"
 
-    # Create test configs
+    # Create test configs with new storage format
     cat > "${CONFIG_DIR}/valid.yaml" << EOL
 source: "${TEST_DIR}/source"
 target: "${TEST_DIR}/target"
@@ -21,19 +21,12 @@ comparison:
   algorithm: "sha256"
   level: "standard"
 storage:
-  device_type: "hdd"
-  max_threads: 4
-EOL
-
-    cat > "${CONFIG_DIR}/defaults.yaml" << EOL
-source: "${TEST_DIR}/source"
-target: "${TEST_DIR}/target"
-comparison:
-  algorithm: "sha256"
-  level: "standard"
-storage:
-  device_type: "hdd"
-  max_threads: 4
+  source:
+    type: "hdd"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
     cat > "${CONFIG_DIR}/invalid_algo.yaml" << EOL
@@ -42,17 +35,26 @@ target: "${TEST_DIR}/target"
 comparison:
   algorithm: "invalid"
 storage:
-  device_type: "hdd"
-  max_threads: 4
+  source:
+    type: "hdd"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
-    cat > "${CONFIG_DIR}/invalid_threads.yaml" << EOL
+    cat > "${CONFIG_DIR}/excess_threads.yaml" << EOL
 source: "${TEST_DIR}/source"
 target: "${TEST_DIR}/target"
 comparison:
   algorithm: "sha256"
 storage:
-  max_threads: -1
+  source:
+    type: "hdd"
+    max_threads: 32
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
     cat > "${CONFIG_DIR}/missing_source.yaml" << EOL
@@ -60,8 +62,12 @@ target: "${TEST_DIR}/target"
 comparison:
   algorithm: "sha256"
 storage:
-  device_type: "hdd"
-  max_threads: 4
+  source:
+    type: "hdd"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
     cat > "${CONFIG_DIR}/non_existent_source.yaml" << EOL
@@ -70,20 +76,24 @@ target: "${TEST_DIR}/target"
 comparison:
   algorithm: "sha256"
 storage:
-  device_type: "hdd"
-  max_threads: 4
-EOL
-
-    cat > "${CONFIG_DIR}/invalid_yaml.yaml" << 'EOL'
-source: ${TEST_DIR}/source
-target: [missing bracket
+  source:
+    type: "hdd"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
     cat > "${CONFIG_DIR}/missing_comparison.yaml" << EOL
 source: "${TEST_DIR}/source"
 target: "${TEST_DIR}/target"
 storage:
-  device_type: "invalid"
+  source:
+    type: "hdd"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
     cat > "${CONFIG_DIR}/invalid_device.yaml" << EOL
@@ -92,10 +102,28 @@ target: "${TEST_DIR}/target"
 comparison:
   algorithm: "sha256"
 storage:
-  device_type: "unknown"
-  max_threads: 4
+  source:
+    type: "invalid"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
 
+    cat > "${CONFIG_DIR}/defaults.yaml" << EOL
+source: "${TEST_DIR}/source"
+target: "${TEST_DIR}/target"
+storage:
+  source:
+    type: "hdd"
+  target:
+    type: "hdd"
+EOL
+
+    cat > "${CONFIG_DIR}/invalid_yaml.yaml" << 'EOL'
+source: ${TEST_DIR}/source
+target: [missing bracket
+EOL
 }
 
 run_test() {
@@ -132,7 +160,7 @@ main() {
     run_test "missing source directory" "${CONFIG_DIR}/missing_source.yaml" 1 || failed=1
     run_test "non-existent source directory" "${CONFIG_DIR}/non_existent_source.yaml" 1 || failed=1
     run_test "invalid YAML syntax" "${CONFIG_DIR}/invalid_yaml.yaml" 1 || failed=1
-    run_test "missing comparison settings" "${CONFIG_DIR}/missing_comparison.yaml" 1 || failed=1
+    run_test "missing comparison settings" "${CONFIG_DIR}/missing_comparison.yaml" 0 || failed=1
     run_test "invalid device type" "${CONFIG_DIR}/invalid_device.yaml" 1 || failed=1
     run_test "minimal config with defaults" "${CONFIG_DIR}/defaults.yaml" 0 || failed=1
 

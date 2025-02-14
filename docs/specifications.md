@@ -392,6 +392,17 @@ exclude:
   - ".DS_Store"
   - "._*"
 
+#storage types (optional)
+storage:
+  source:
+    type: "ssd"              # hdd, ssd, network
+    buffer_size: 262144      # Optional: 256KB for SSD
+    max_threads: 16          # Optional: higher concurrency for SSD
+  target:
+    type: "network"          # Network storage (e.g., NAS)
+    buffer_size: 1048576     # Optional: 1MB for network
+    max_threads: 8           # Optional: limit network concurrency
+
 # Validation settings as defined in section 5.1
 
 # Device optimization (HDD focused)
@@ -532,6 +543,22 @@ Validation Summary:
 - Minimize head movement by completing directories
 - Conservative I/O scheduling
 
+#### Storage Types
+- HDD (Hard Disk Drive):
+  - Buffer Size: 32KB
+  - Max Threads: 4
+  - Focus: Sequential access, minimize head movement
+
+- SSD (Solid State Drive):
+  - Buffer Size: 256KB
+  - Max Threads: 16
+  - Focus: Parallel operations, larger buffer sizes
+
+- Network Storage:
+  - Buffer Size: 1MB
+  - Max Threads: 8
+  - Focus: Balance between throughput and connection limits
+
 ### 9.2 Performance Optimization
 
 1. Group files by directory
@@ -548,6 +575,46 @@ Validation Summary:
    - Directory-level recovery points
    - Clear reporting of directory status
    - Easy resume from last directory
+
+### 9.3 Storage Configuration Defaults
+
+Default Behavior:
+
+If storage type is not specified, assumes "hdd"
+If buffer_size is not specified, uses type-specific default
+If max_threads is not specified, uses type-specific default
+When source and target have different types:
+
+Uses the more conservative thread count
+Adjusts buffer sizes independently for read/write
+
+When storage configuration is not fully specified, the following defaults are applied:
+
+```yaml
+# Full configuration with defaults shown
+storage:
+  source:
+    type: "hdd"           # Default if not specified
+    buffer_size: 32768    # 32KB for HDD
+    max_threads: 4        # Conservative default for HDD
+  target:
+    type: "hdd"
+    buffer_size: 32768
+    max_threads: 4
+
+# Optimized defaults by storage type:
+HDD:
+  buffer_size: 32768     # 32KB - optimized for mechanical drives
+  max_threads: 4         # Limited to prevent excessive seeking
+
+SSD:
+  buffer_size: 262144    # 256KB - leverages faster random access
+  max_threads: 16        # Higher concurrency for better performance
+
+Network:
+  buffer_size: 1048576   # 1MB - optimized for network transfers
+  max_threads: 8         # Balanced for network connections
+  ```
 
 ## 10. Reports and Logs
 

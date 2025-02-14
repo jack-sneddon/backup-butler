@@ -1,0 +1,24 @@
+# config/examples/storage-optimized.yaml
+
+# Core directories
+source: "/Users/photos/2024"
+target: "/Volumes/backup/photos/2024"
+
+# Storage configuration
+storage:
+  source:
+    type: "ssd"              # Local SSD
+    buffer_size: 262144      # Optional: 256KB (will use default if not specified)
+    max_threads: 16          # Optional: thread limit (will use default if not specified)
+  target:
+    type: "network"          # Network storage
+    buffer_size: 1048576     # Optional: 1MB
+    max_threads: 8           # Optional: limit concurrent network operations
+
+comparison:
+  algorithm: "sha256"
+  level: "standard"
+
+exclude:
+  - "*.tmp"
+  - ".DS_Store"

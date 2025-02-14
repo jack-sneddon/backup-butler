@@ -74,16 +74,21 @@ func loadAndValidateConfig(cmd *cobra.Command, cfgFile string) (*config.Config, 
 		"source", cfg.Source,
 		"target", cfg.Target,
 		"folders", cfg.Folders,
-		"deviceType", cfg.Storage.DeviceType)
+		"source deviceType", cfg.Storage.Source.Type,
+		"target deviceType", cfg.Storage.Target.Type)
 
 	return cfg, nil
 }
 
-func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
-	// Get the logger
-	// log := logger.Get()
+// internal/commands/sync/sync.go - update displayConfiguration
 
-	// Only display configuration at info level or below
+func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
+	// Skip display if quiet flag is set
+	if quiet, _ := cmd.Flags().GetBool("quiet"); quiet {
+		return
+	}
+
+	// Only display if not at warn/error level
 	if cmd.Flag("log-level").Value.String() == "warn" ||
 		cmd.Flag("log-level").Value.String() == "error" {
 		return
@@ -106,8 +111,8 @@ func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
 	}
 
 	fmt.Printf("├── Storage\n")
-	fmt.Printf("│   ├── Device: %s\n", cfg.Storage.DeviceType)
-	fmt.Printf("│   └── Threads: %d\n", cfg.Storage.MaxThreads)
+	fmt.Printf("│   ├── Source Type: %s\n", cfg.Storage.Source.Type)
+	fmt.Printf("│   └── Target Type: %s\n", cfg.Storage.Target.Type)
 
 	fmt.Printf("└── Validation\n")
 	fmt.Printf("    ├── Algorithm: %s\n", cfg.Comparison.Algorithm)
@@ -118,6 +123,8 @@ func processDirectories(cfg *config.Config) error {
 	opts := &processor.ProcessorOptions{
 		PreserveMetadata: true,
 		BufferSize:       cfg.Comparison.BufferSize,
+		MaxThreads:       cfg.Storage.Source.MaxThreads, // Use source settings
+		StorageType:      cfg.Storage.Source.Type,       // Use source type
 	}
 	proc := processor.NewDirectoryProcessor(opts)
 

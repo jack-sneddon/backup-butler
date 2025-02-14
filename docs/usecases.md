@@ -257,13 +257,63 @@ THEN:  Show validation level used for final result:
 ```
 
 ### Case 23: Escalation with Errors
-```
+
+```yaml
 GIVEN: Validation escalation is configured
 WHEN:  Error occurs during escalated check
 THEN:  Mark file with error status (!)
 AND:   Log original validation level
 AND:   Log level where error occurred
 AND:   Include in error summary
+```
+
+## Storage Type Operations
+
+### Case 24: SSD Source to HDD Target
+
+```yaml
+GIVEN: Source directory is on SSD
+AND:   Target directory is on HDD
+WHEN:  Processing starts
+THEN:  Configure for optimal performance:
+- Use SSD-optimized read buffer (256KB)
+- Use HDD-optimized write buffer (32KB)
+- Limit threads to HDD maximum (4)
+- Maintain sequential writes to HDD
+```
+
+### Case 25: Network Target Optimization
+
+```yaml
+GIVEN: Target is network storage
+WHEN:  Sync operation starts
+THEN:  Configure network optimizations:
+- Use larger buffer size (1MB)
+- Set moderate thread count (8)
+- Monitor network throughput
+- Handle network latency gracefully
+```
+
+### Case 26: Storage Type Auto-Detection
+
+```yaml
+GIVEN: Storage types specified in configuration
+WHEN:  Operation begins
+THEN:  Validate storage settings:
+- Confirm buffer sizes are appropriate
+- Verify thread counts are within limits
+- Use conservative settings if type unknown
+```
+
+### Case 27: Mixed Storage Performance
+
+```yaml
+GIVEN: Different source and target storage types
+WHEN:  Processing files
+THEN:  Optimize for both devices:
+- Use minimum thread count between devices
+- Adjust buffer sizes for both devices
+- Log performance characteristics
 ```
 
 ## Test Coverage Recommendations
@@ -303,3 +353,21 @@ AND:   Include in error summary
    - Read errors
    - Hash calculation failures
    - Memory constraints
+
+7. Storage Type Tests:
+   - HDD specific optimizations
+     * Sequential access patterns
+     * Thread limiting
+     * Buffer size impacts
+   - SSD optimizations
+     * Concurrent operations
+     * Larger buffer sizes
+     * Thread scaling
+   - Network storage
+     * Connection reliability
+     * Throughput optimization
+     * Error recovery
+   - Mixed storage types
+     * Source/target different types
+     * Performance balancing
+     * Resource utilization

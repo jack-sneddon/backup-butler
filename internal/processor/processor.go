@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
@@ -15,18 +16,48 @@ import (
 type directoryProcessor struct {
 	opts *ProcessorOptions
 	log  *zap.SugaredLogger
+	sem  chan struct{} // Semaphore for thread limiting
 }
 
 func NewDirectoryProcessor(opts *ProcessorOptions) DirectoryProcessor {
 	if opts == nil {
 		opts = &ProcessorOptions{
 			PreserveMetadata: true,
-			BufferSize:       32768, // 32KB default
+			BufferSize:       32768, // Default to 32KB
+			MaxThreads:       4,     // Default to 4 threads
+			StorageType:      "hdd", // Default to HDD
 		}
 	}
+
+	// Optimize settings based on storage type
+	switch opts.StorageType {
+	case "ssd":
+		if opts.MaxThreads == 0 {
+			opts.MaxThreads = 16
+		}
+		if opts.BufferSize == 0 {
+			opts.BufferSize = 256 * 1024 // 256KB
+		}
+	case "network":
+		if opts.MaxThreads == 0 {
+			opts.MaxThreads = 8
+		}
+		if opts.BufferSize == 0 {
+			opts.BufferSize = 1024 * 1024 // 1MB
+		}
+	default: // hdd
+		if opts.MaxThreads == 0 {
+			opts.MaxThreads = 4
+		}
+		if opts.BufferSize == 0 {
+			opts.BufferSize = 32 * 1024 // 32KB
+		}
+	}
+
 	return &directoryProcessor{
 		opts: opts,
 		log:  logger.Get(),
+		sem:  make(chan struct{}, opts.MaxThreads),
 	}
 }
 
@@ -62,41 +93,60 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 		return fmt.Errorf("failed to read source directory: %w", err)
 	}
 
-	p.log.Debugw("Processing directory",
-		"source", sourcePath,
-		"target", targetPath,
-		"fileCount", len(entries))
+	// Process files concurrently with thread limiting
+	var wg sync.WaitGroup
+	errs := make(chan error, len(entries))
 
-	// Process each file in the directory
 	for _, entry := range entries {
 		if entry.IsDir() {
 			p.log.Debugw("Skipping subdirectory", "name", entry.Name())
-			continue // Skip subdirectories for now
+			continue
 		}
 
-		sourceFile := filepath.Join(sourcePath, entry.Name())
-		targetFile := filepath.Join(targetPath, entry.Name())
+		wg.Add(1)
+		go func(e os.DirEntry) {
+			defer wg.Done()
 
-		p.log.Debugw("Copying file",
-			"source", sourceFile,
-			"target", targetFile)
+			// Acquire semaphore
+			p.sem <- struct{}{}
+			defer func() { <-p.sem }()
 
-		if err := p.copyFile(sourceFile, targetFile); err != nil {
-			p.log.Errorw("Failed to copy file",
-				"file", entry.Name(),
-				"error", err)
-			return fmt.Errorf("failed to copy %s: %w", entry.Name(), err)
-		}
+			sourceFile := filepath.Join(sourcePath, e.Name())
+			targetFile := filepath.Join(targetPath, e.Name())
+
+			p.log.Debugw("Processing file",
+				"source", sourceFile,
+				"target", targetFile)
+
+			if err := p.copyFile(sourceFile, targetFile); err != nil {
+				p.log.Errorw("Failed to copy file",
+					"file", e.Name(),
+					"error", err)
+				errs <- fmt.Errorf("failed to copy %s: %w", e.Name(), err)
+			}
+		}(entry)
 	}
 
-	p.log.Infow("Directory processing complete",
-		"source", sourcePath,
-		"target", targetPath)
+	// Wait for all files to be processed
+	wg.Wait()
+	close(errs)
+
+	// Check for any errors
+	var processErrors []error
+	for err := range errs {
+		processErrors = append(processErrors, err)
+	}
+
+	if len(processErrors) > 0 {
+		// Log all errors
+		for _, err := range processErrors {
+			p.log.Errorw("File processing error", "error", err)
+		}
+		return fmt.Errorf("failed to process %d files", len(processErrors))
+	}
 
 	return nil
 }
-
-// internal/processor/processor.go
 
 func (p *directoryProcessor) copyFile(sourcePath, targetPath string) error {
 	// Open source file
@@ -140,4 +190,15 @@ func (p *directoryProcessor) copyFile(sourcePath, targetPath string) error {
 	}
 
 	return nil
+}
+
+func parseStorageType(t string) string {
+	switch t {
+	case "ssd", "SSD":
+		return "ssd"
+	case "network", "NETWORK":
+		return "network"
+	default:
+		return "hdd"
+	}
 }
