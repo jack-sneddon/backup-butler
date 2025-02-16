@@ -9,6 +9,7 @@ import (
 	"github.com/jack-sneddon/backup-butler/internal/config"
 	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/processor"
+	"github.com/jack-sneddon/backup-butler/internal/progress"
 	"github.com/spf13/cobra"
 )
 
@@ -80,8 +81,6 @@ func loadAndValidateConfig(cmd *cobra.Command, cfgFile string) (*config.Config, 
 	return cfg, nil
 }
 
-// internal/commands/sync/sync.go - update displayConfiguration
-
 func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
 	// Skip display if quiet flag is set
 	if quiet, _ := cmd.Flags().GetBool("quiet"); quiet {
@@ -120,19 +119,27 @@ func displayConfiguration(cmd *cobra.Command, cfg *config.Config) {
 }
 
 func processDirectories(cfg *config.Config) error {
+	// Create progress tracker
+	tracker := progress.NewTracker()
+	if err := tracker.Start(); err != nil {
+		return fmt.Errorf("failed to start progress tracking: %w", err)
+	}
+	defer tracker.Stop() // Will now wait properly for display
+
 	opts := &processor.ProcessorOptions{
 		PreserveMetadata: true,
 		BufferSize:       cfg.Comparison.BufferSize,
-		MaxThreads:       cfg.Storage.Source.MaxThreads, // Use source settings
-		StorageType:      cfg.Storage.Source.Type,       // Use source type
+		MaxThreads:       cfg.Storage.Source.MaxThreads,
+		StorageType:      cfg.Storage.Source.Type,
+		Progress:         tracker,
 	}
 	proc := processor.NewDirectoryProcessor(opts)
 
 	if len(cfg.Folders) > 0 {
 		return processFolders(cfg, proc)
 	}
-
 	return processRootDirectory(cfg, proc)
+
 }
 
 func processFolders(cfg *config.Config, proc processor.DirectoryProcessor) error {

@@ -4,6 +4,7 @@ package scan
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/types"
@@ -47,6 +48,15 @@ type Progress struct {
 	Errors         []string
 	Phase          string // "counting", "scanning", "comparing"
 	TotalFiles     int
+
+	// Directory progress tracking
+	CurrentDirTotal int64     // Total bytes in current directory
+	CurrentDirBytes int64     // Processed bytes in current directory
+	CurrentDirFiles int       // Number of files in current directory
+	CurrentDirDone  int       // Processed files in current directory
+	StartTime       time.Time // Operation start time
+	CurrentDirStart time.Time // Current directory start time
+	RemainingDirs   []string  // Directories left to process
 }
 
 func (p *Progress) AddError(err error) {

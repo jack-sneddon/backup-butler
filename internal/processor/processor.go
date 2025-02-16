@@ -23,9 +23,9 @@ func NewDirectoryProcessor(opts *ProcessorOptions) DirectoryProcessor {
 	if opts == nil {
 		opts = &ProcessorOptions{
 			PreserveMetadata: true,
-			BufferSize:       32768, // Default to 32KB
-			MaxThreads:       4,     // Default to 4 threads
-			StorageType:      "hdd", // Default to HDD
+			BufferSize:       32768,
+			MaxThreads:       4,
+			StorageType:      "hdd",
 		}
 	}
 
@@ -93,13 +93,41 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 		return fmt.Errorf("failed to read source directory: %w", err)
 	}
 
+	if p.opts.Progress != nil {
+		// Calculate directory totals
+		var dirTotal int64
+		var fileCount int
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				info, err := entry.Info()
+				if err == nil {
+					dirTotal += info.Size()
+					fileCount++
+				}
+			}
+		}
+
+		if err := p.opts.Progress.StartDirectory(sourcePath, dirTotal, fileCount); err != nil {
+			p.log.Warnw("Failed to start progress tracking", "error", err)
+		}
+	}
+
 	// Process files concurrently with thread limiting
 	var wg sync.WaitGroup
 	errs := make(chan error, len(entries))
 
 	for _, entry := range entries {
 		if entry.IsDir() {
-			p.log.Debugw("Skipping subdirectory", "name", entry.Name())
+			// Process subdirectory
+			subSourcePath := filepath.Join(sourcePath, entry.Name())
+			subTargetPath := filepath.Join(targetPath, entry.Name())
+
+			if err := p.ProcessDirectory(subSourcePath, subTargetPath); err != nil {
+				p.log.Errorw("Failed to process subdirectory",
+					"directory", entry.Name(),
+					"error", err)
+				errs <- err
+			}
 			continue
 		}
 
@@ -124,6 +152,13 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 					"error", err)
 				errs <- fmt.Errorf("failed to copy %s: %w", e.Name(), err)
 			}
+
+			// progress tracking
+			if p.opts.Progress != nil {
+				if info, err := e.Info(); err == nil {
+					p.opts.Progress.UpdateProgress(info.Size())
+				}
+			}
 		}(entry)
 	}
 
@@ -135,6 +170,13 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 	var processErrors []error
 	for err := range errs {
 		processErrors = append(processErrors, err)
+	}
+
+	// Finish directory progress tracking
+	if p.opts.Progress != nil {
+		if err := p.opts.Progress.FinishDirectory(); err != nil {
+			p.log.Warnw("Failed to finish progress tracking", "error", err)
+		}
 	}
 
 	if len(processErrors) > 0 {

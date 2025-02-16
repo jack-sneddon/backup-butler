@@ -91,41 +91,7 @@ validation:
 - **Use Case**: periodic full verification
 - **Limitations**: Resource intensive, time-consuming
 
-## 5. File Validation and Comparison
-
-### 5.1 Validation Strategy
-
-Each validation level provides a different balance of performance vs thoroughness:
-
-```yaml
-validation:
-  # Default validation level
-  level: "quick"      # quick, standard, deep
-  buffer_size: 32768         # bytes for partial content validation
-  hash_algorithm: "sha256"   # md5, sha1, sha256
-
-### 5. Validation Levels
-
-Validation progresses from lightweight to thorough checks, balancing performance against accuracy:
-
-Configuration will define what level to go for, but it will check the lower levels first.  If they pass, it will /onlate to the next level until it reaches what was defined in configuration.
-
-Quick:
-- Metadata comparison only (size, mtime)
-- Performance: ~0.1ms per file
-- Use case: Detecting obvious changes
-
-Standard:
-- Metadata + partial content hash (first 32KB)
-- Performance: ~1.9ms per file
-- Use case: Balanced validation for most files
-
-Deep:
-- Metadata + full content hash
-- Performance: ~12s per GB
-- Use case: Complete verification when needed
-
-### 5.2 Validation Algorithm
+### 5.3 Validation Algorithm
 
 ```bash
 For each file:
@@ -154,223 +120,74 @@ For each file:
    - Time taken
 ```
 
-### 5.3 Validation Algorithm
 
-Quick:
+### 5.4 Validation Output
 
-- Metadata mismatch → fail
-- Metadata match → pass
+Validation results show file status and validation level:
+```bash
+./photos/2024/
+  = vacation/img001.jpg [100MB matched]      # Identical
+  + vacation/img002.jpg [50MB new]           # To be copied
+  * vacation/img003.jpg [75MB changed]       # Content differs
+  - vacation/old/img004.jpg [25MB removed]   # Only in target
+  ! vacation/corrupt.jpg [ERROR: read failed] # Error occurred
 
-Standard:
-- Metadata mismatch → fail
-- Metadata match + content mismatch → fail
-- Metadata match + content match → pass
-
-Deep:
-- Metadata mismatch → fail
-- Metadata match + partial content mismatch → fail
-- Metadata match + partial content match + full content mismatch → fail
-- All checks pass → pass
-
-For each file:
-
-1. Check metadata (always):
-   - Compare file sizes
-   - Compare modification times (2s tolerance)
-   - If different: return StatusDiffer
-
-2. Based on configured level:
-   QUICK:
-     - Return StatusMatch (metadata matches)
-
-   STANDARD:
-     - Calculate hash of first 32KB
-     - Return StatusDiffer if hashes different
-     - Return StatusMatch if hashes match
-
-   DEEP:
-     - Calculate full content hash
-     - Return StatusDiffer if hashes different
-     - Return StatusMatch if hashes match
+Validation Summary:
+├── Quick Checks:   150 files
+├── Standard Checks: 45 files
+├── Deep Checks:     5 files
+└── Total Time:    2m 15s
+```
 
 ## 6. Command Interface
 
 ### 6.1 Global Commands
 
-```bash
-backup-butler [command] [options]
+backup-butler provides these operations:
 
-Commands:
-  check     Compare source and target without copying
-  sync      Synchronize source to target with copy
-  history   Show operation logs and reports
-  version   Display program version information
+- **check**:   Compare source and target (see Section 5)
+- **sync**:    Perform backup operation (see Section 9)
+- **history**: View operation history (see Section 10)
+- **version**: Show version information
 
-Global Options:
-  --config string     Configuration file path
-  --log-level string Log level (debug|info|warn|error)
-```
+Global options:
 
-### 6.2 Check Command
+- --**config**:    Configuration file path
+- --**log-level**: Log level (debug|info|warn|error)
 
-Purpose: Preview all changes that would be made during a sync operation
+### 6.2 Command Behavior
 
-```bash
-backup-butler check [options]
-  --level string    Validation level (quick|standard|deep)
-```
+All commands follow these principles:
 
-Output Format:
+- Configuration validation (Section 7)
+- Progress tracking (Section 8)
+- Storage optimization (Section 9)
+- Report generation (Section 10)
 
-```bash
-Backup Butler v0.1.0
-====================
+### 6.3 Operation Flow
 
-Scan Results:
-├── Locations
-│   ├── Source: /Photos/2024
-│   └── Target: /Volumes/backup/Photos/2024
-├── Summary
-│   ├── Directories: 5
-│   ├── Files: 207,163
-│   ├── Total Size: 1.2TB
-└── File Status
-    = photos/img001.jpg [quick]         # File matches
-    + photos/img002.jpg [quick]         # Will be copied
-    * photos/img003.jpg [standard]      # Will be updated
-    - photos/old/img004.jpg             # Only in target
-    ! photos/corrupt.jpg                # Error reading file
+1. **Check** Command:
 
-Results Summary:
-├── Matched:  180,245 files
-├── New:      25,890 files
-├── Missing:  1,028 files
-├── Modified: 0 files
-└── Errors:   0 files
+- Validates configuration
+- Scans directories
+- Performs validation
+- Shows projected changes
+- Generates reports
 
-Actions to be taken:
-├── Files to copy: 25,890 (156.2 GB)
-├── Files to update: 0
-└── Files only in target: 1,028 (review deleted_files.txt)
+2. **Sync** Command:
 
-Validation to be performed:
-├── Quick:    180,245 files
-├── Standard: 25,890 files
-└── Deep:     1,028 files
-
-Estimated time: 2h 15m
-```
-
-Key Features:
-- Shows status of ALL files (not just changes)
-- Indicates validation level used for each file
-- Provides clear summary of actions to be taken
-- Same format used in both 'check' and 'sync'
-- Identifies files that only exist in target
-- Groups files by status for easy review
-- Estimates operation time
-
-The check command:
-1. Performs all validation but makes no changes
-2. Creates the same reports as 'sync' would
-3. Shows validation levels that would be used
-4. Gives users chance to review before proceeding
+- Performs check steps
+- Creates needed directories
+- Copies/updates files
+- Handles deletions
+- Logs operations
 
 
-### 6.3 Sync Command
-Purpose: Perform actual backup operation
+3. **History** Command:
 
-```bash
-backup-butler sync [options]
-  --level string    Validation level (quick|standard|deep)
-```
-
-Operation Steps:
-1. Directory Analysis
-   - Scan source and target
-   - Build operation plan
-   - Show initial summary
-
-2. Directory Processing
-   ```
-   Processing: /Photos/Vacation2024
-   [================>    ] 78% (156/200 files)
-   Currently Processing:
-     Vacation2024/Summer (156.2 MB)
-     ETA: 2m 15s
-   ```
-
-3. File Operations:
-   - Create missing directories
-   - Copy new files
-   - Validate existing files
-   - Handle deleted files per config
-   - Process one directory at a time
-
-4. Progress Display:
-   ```
-   Statistics:
-   ├── Processed: 156 files (2.1 GB)
-   ├── Remaining: 44 files (0.6 GB)
-   └── Total Time: 5m 32s
-   ```
-
-5. Completion Summary:
-   ```
-   Operation Complete
-   =================
-   Start Time: 2025-02-06 14:30:22
-   End Time:   2025-02-06 14:35:54
-   Duration:   5m 32s
-
-   Results:
-   ├── Directories Processed: 5
-   ├── Files Copied: 25
-   ├── Files Validated: 175
-   ├── Data Transferred: 2.7 GB
-   └── Average Speed: 8.3 MB/s
-
-   Validation Summary:
-   ├── Quick: 150 files
-   ├── Standard: 45 files
-   └── Deep: 5 files
-
-   Reports Generated:
-   └── /Volumes/backup/Photos/.backup-butler/reports/deleted_files.txt
-   ```
-
-Behavioral Notes:
-- Same validation and checks as 'check' command
-- Actually performs file operations
-- Processes directory by directory
-- Creates operation logs
-- Generates status reports
-- Handles errors gracefully
-
-
-### 6.4 Version Command
-
-```bash
-backup-butler version
-Backup Butler v0.1.0
-Git commit: abc123
-Built: 2025-02-06
-```
-
-### 6.5 History Command
-
-```bash
-backup-butler history
-Last Operation: 2025-02-06 14:30:22
-Status: Complete
-Results:
-├── Files Processed: 207,163
-├── Data Transferred: 1.2TB
-└── Duration: 1h 15m
-
-Reports Available:
-└── /Volumes/backup/Photos/.backup-butler/reports/deleted_files.txt
-```
+- Shows operation logs
+- Lists available reports
+- Provides operation summary
 
 ## 7. Configuration
 
@@ -421,20 +238,6 @@ logging:
   level: "info"  # debug, info, warn, error
 ```
 
-# Add to Section 7.1 Example Configuration
-
-```yaml
-# Deleted file handling
-deleted_files:
-  action: "report"           # report, delete, archive
-  archive_location: ""       # Required if action = "archive"
-  report_format: "text"      # text, csv, html
-  protected_paths:          # Never delete these paths
-    - "*.important"
-    - "tax/*"
-    - "**/*.original"
-```
-
 ## 7.2 Deleted File Handling
 
 ### 7.2.1 Action Modes
@@ -466,16 +269,47 @@ deleted_files:
 - **csv**: Machine-parseable CSV format
 - **html**: Web-viewable report with sorting/filtering
 
+### 7.2.5 Example Config
+```yaml
+# Deleted file handling
+deleted_files:
+  action: "delete"           # will remove files not found in source but in target
+  archive_location: ""       # Required if action = "archive"
+  report_format: "text"      # text, csv, html
+  protected_paths:          # Never delete these paths
+    - "*.important"
+    - "tax/*"
+    - "**/*.original"
+```
+
+
 ## 8. Progress and Reporting
 
-### 8.1 Real-time Display
+### 8.1 Progress Model
+Progress tracking occurs at two levels:
 
-```sh
-Directory: /Photos/Vacation2024
+1. Directory Level
+   - Files in current directory
+   - Bytes processed
+   - Completion percentage
+   - Current operation status
+
+
+2. Overall Progress
+   - Total files processed
+   - Total bytes complete
+   - Elapsed time
+   - Remaining work
+
+
+### 8.2 Progress Display
+Standard display format:
+
+```bash
+Processing: /Photos/Vacation2024
 [================>    ] 78% (156/200 files)
 Currently Processing:
   Vacation2024/Summer (156.2 MB)
-  ETA: 2m 15s
 
 Statistics:
 ├── Processed: 156 files (2.1 GB)
@@ -483,51 +317,38 @@ Statistics:
 └── Total Time: 5m 32s
 ```
 
-### 8.2 Directory-Based Processing
+### 8.3 Implementation
+Progress tracking is:
 
-- Files are processed one directory at a time
-- For each directory:
-  1. Create directory structure if needed
-  2. Process all files in current directory
-  3. Move to next directory
-- Benefits:
-  - Optimized for HDD sequential access
-  - Clear progress reporting
-  - Better error handling (directory level)
-  - Simpler resume points
-
-### 8.3 Progress Calculation
-
-- Progress based on total files and directories
-- ETA calculated using:
-  - Completed files count
-  - Total elapsed time
-  - Remaining files count
-- Progress updated:
-  - After each file completion
-  - When starting new directory
-  - At regular intervals (every second)
-
-### 8.4 Validation Report
-
-```sh
-./photos/2024/
-  = vacation/img001.jpg      [100MB matched]
-  + vacation/img002.jpg      [50MB new]
-  * vacation/img003.jpg      [75MB changed]
-  - vacation/old/img004.jpg  [25MB removed]
-  ! vacation/corrupt.jpg     [ERROR: read failed]
-
-Validation Summary:
-├── Quick Checks:   150 files
-├── Standard Checks: 45 files
-├── Deep Checks:     5 files
-└── Total Time:      2m 15s
-```
+1. Event-driven: Updates on file operations
+2. Directory-based: One directory at a time
+3. Thread-safe: Mutex-protected updates
+4. Resource-efficient: No background processes
 
 ## 9. Storage Device Protection
 
-### 9.1 HDD Requirements
+### 9.1 Directory-Based Processing
+
+#### Core Principles
+
+1. **Sequential Processing**
+   - Process one directory completely before moving to next
+   - Process parent directories before children
+   - Complete directory tree before moving to next
+
+2. **Performance Optimization**
+   - Minimize disk head movement
+   - Optimize for sequential access
+   - Thread limiting based on storage type
+   - Buffer sizes tuned to device type
+
+3. **Error Handling**
+   - Directory-level recovery points
+   - Clear error reporting
+   - Easy resume from last directory
+   - Comprehensive error logs
+
+### 9.2 HDD Requirements
 
 #### Directory-Based Processing
 
@@ -559,7 +380,7 @@ Validation Summary:
   - Max Threads: 8
   - Focus: Balance between throughput and connection limits
 
-### 9.2 Performance Optimization
+### 9.3 Performance Optimization
 
 1. Group files by directory
    - Process all files in current directory
@@ -576,7 +397,7 @@ Validation Summary:
    - Clear reporting of directory status
    - Easy resume from last directory
 
-### 9.3 Storage Configuration Defaults
+### 9.4 Storage Configuration Defaults
 
 Default Behavior:
 

@@ -40,10 +40,12 @@
 package scan
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/types"
@@ -74,11 +76,10 @@ func NewScanner(options *ScannerOptions) *Scanner {
 		options = &ScannerOptions{
 			MaxDepth:   -1,
 			BufferSize: 32768,
-			Level:      types.Standard, // Default if not specified
+			Level:      types.Standard,
 		}
 	}
 
-	// Set validation defaults if not provided
 	if options.ValidationConfig == nil {
 		options.ValidationConfig = &ValidationConfig{
 			Level: types.Standard,
@@ -86,10 +87,13 @@ func NewScanner(options *ScannerOptions) *Scanner {
 	}
 
 	return &Scanner{
-		stats:    make(map[string]*DirectoryStats),
-		log:      logger.Get(),
-		progress: &Progress{Phase: "initializing"},
-		opts:     options,
+		stats: make(map[string]*DirectoryStats),
+		log:   logger.Get(),
+		progress: &Progress{
+			Phase:     "initializing",
+			StartTime: time.Now(),
+		},
+		opts: options,
 	}
 }
 
@@ -146,13 +150,6 @@ func (s *Scanner) countFiles(root string) error {
 			s.progress.AddError(NewScanError(path, "access", err))
 			return nil // Continue despite errors
 		}
-
-		/*
-			s.log.Debugw("Processing path",
-				"path", path,
-				"isDir", info.IsDir(),
-				"root", absRoot)
-		*/
 
 		if info.IsDir() {
 			// Skip directory pattern checks for root
@@ -238,6 +235,30 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 	}
 
 	s.progress.CurrentDir = root
+	s.progress.CurrentDirStart = time.Now()
+
+	// Calculate directory totals first
+	var dirTotal int64
+	var fileCount int
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err == nil {
+				dirTotal += info.Size()
+				fileCount++
+			}
+		}
+	}
+
+	s.log.Debugw("Starting directory processing",
+		"directory", root,
+		"totalBytes", dirTotal,
+		"fileCount", fileCount)
+
+	s.progress.CurrentDirTotal = dirTotal
+	s.progress.CurrentDirFiles = fileCount
+	s.progress.CurrentDirDone = 0
+	s.progress.CurrentDirBytes = 0
 
 	for _, entry := range entries {
 		path := filepath.Join(root, entry.Name())
@@ -269,6 +290,7 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 			continue
 		}
 
+		// File processing with progress tracking
 		// Get relative path for file
 		relPath, err := filepath.Rel(absRoot, path)
 		if err != nil {
@@ -279,6 +301,18 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 		if matchesPattern(relPath, s.opts.ExcludePatterns) {
 			continue
 		}
+
+		s.progress.ScannedFiles++
+		s.progress.ProcessedBytes += info.Size()
+
+		// Update directory-level progress
+		s.progress.CurrentDirDone++
+		s.progress.CurrentDirBytes += info.Size()
+
+		s.log.Debugw("File processed",
+			"directory", root,
+			"progress", fmt.Sprintf("%d/%d", s.progress.CurrentDirDone, s.progress.CurrentDirFiles),
+			"bytes", fmt.Sprintf("%d/%d", s.progress.CurrentDirBytes, s.progress.CurrentDirTotal))
 
 		// Process file
 		s.mu.Lock()
@@ -300,8 +334,6 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 
 		s.mu.Unlock()
 
-		s.progress.ScannedFiles++
-		s.progress.ProcessedBytes += info.Size()
 	}
 
 	return nil
