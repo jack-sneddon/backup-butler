@@ -31,10 +31,8 @@ Validation levels:
 }
 
 func runCheck(cmd *cobra.Command, args []string) error {
-	log := logger.Get()
-
 	cfgFile := cmd.Root().PersistentFlags().Lookup("config").Value.String()
-	log.Debugw("Loading config", "file", cfgFile)
+	logger.Debug("Loading config", "file", cfgFile)
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
@@ -42,13 +40,13 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	if cfg.Validation != nil {
-		log.Debugw("check.go::runCheck - Config after loading",
+		logger.Debug("check.go::runCheck - Config after loading",
 			"validation", cfg.Validation)
 	} else {
-		log.Debugw("check.go::runCheck - No validation config found")
+		logger.Debug("check.go::runCheck - No validation config found")
 	}
 
-	log.Debugw("Config loaded",
+	logger.Debug("Config loaded",
 		"source", cfg.Source,
 		"target", cfg.Target,
 		"excludePatterns", cfg.Exclude,
@@ -61,19 +59,19 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	// 1. Get default from config if available
 	if cfg.Validation != nil && cfg.Validation.Level != "" {
 		level = string(cfg.Validation.Level)
-		log.Debugw("Using config validation level", "level", level)
+		logger.Debug("Using config validation level", "level", level)
 	}
 
 	// 2. Get default from config if available
 	if cfg.Validation != nil && cfg.Validation.Level != "" {
 		level = string(cfg.Validation.Level)
-		log.Debugw("Using config validation level", "level", level)
-		log.Debugw("check.go::runCheck() - Using config validation level",
+		logger.Debug("Using config validation level", "level", level)
+		logger.Debug("check.go::runCheck() - Using config validation level",
 			"level", level,
 			"configLevel", string(cfg.Validation.Level))
 
 	} else {
-		log.Debugw("check.go::runCheck() - No validation level in config")
+		logger.Debug("check.go::runCheck() - No validation level in config")
 	}
 
 	// 2. Check command line flag
@@ -89,7 +87,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	// 3. Set standard as default if neither is specified
 	if level == "" {
 		level = string(types.Standard)
-		log.Debugw("check.go::runCheck() - Using default validation level",
+		logger.Debug("check.go::runCheck() - Using default validation level",
 			"level", level)
 	}
 
@@ -98,13 +96,13 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid validation level: %s", level)
 	}
 
-	log.Debugw("Final validation level set",
+	logger.Debug("Final validation level set",
 		"level", level,
 		"hasValidation", cfg.Validation != nil,
 		"hasDefaultLevel", cfg.Validation != nil && cfg.Validation.Level != "")
 
 	if cfg.Validation != nil {
-		log.Debugw("Validation config",
+		logger.Debug("Validation config",
 			"default", cfg.Validation.Level)
 	}
 
@@ -118,7 +116,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		ValidationConfig: cfg.Validation,
 	}
 
-	log.Debugw("check.go:runCheck() - Scanner options created",
+	logger.Debug("check.go:runCheck() - Scanner options created",
 		"validationConfig", opts.ValidationConfig)
 
 	scanner := scan.NewScanner(opts)

@@ -32,11 +32,10 @@ func NewSyncCmd() *cobra.Command {
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
-	log := logger.Get()
 	cfgFile := cmd.Root().PersistentFlags().Lookup("config").Value.String()
 
-	log.Debugw("Starting sync command execution")
-	log.Infow("Loading configuration", "file", cfgFile)
+	logger.Debug("Starting sync command execution")
+	logger.Info("Loading configuration", "file", cfgFile)
 
 	cfg, err := loadAndValidateConfig(cmd, cfgFile)
 	if err != nil {
@@ -49,29 +48,28 @@ func runSync(cmd *cobra.Command, args []string) error {
 }
 
 func loadAndValidateConfig(cmd *cobra.Command, cfgFile string) (*config.Config, error) {
-	log := logger.Get()
 
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
 		msg := strings.TrimPrefix(err.Error(), "invalid configuration: ")
 		msg = strings.TrimPrefix(msg, "failed to load config: ")
-		log.Error(msg)
+		logger.Error(msg)
 		return nil, fmt.Errorf("%s", msg)
 	}
 
 	if cmd.Flag("log-level").Value.String() == "debug" {
-		log.Debugw("Configuration loaded successfully",
+		logger.Debug("Configuration loaded successfully",
 			"source", cfg.Source,
 			"target", cfg.Target)
 	}
 
 	// Handle folder overrides
 	if folders, _ := cmd.Flags().GetStringSlice("folders"); len(folders) > 0 {
-		log.Infow("Using folder override", "folders", folders)
+		logger.Info("Using folder override", "folders", folders)
 		cfg.Folders = folders
 	}
 
-	log.Infow("Starting sync",
+	logger.Info("Starting sync",
 		"source", cfg.Source,
 		"target", cfg.Target,
 		"folders", cfg.Folders,
@@ -143,19 +141,18 @@ func processDirectories(cfg *config.Config) error {
 }
 
 func processFolders(cfg *config.Config, proc processor.DirectoryProcessor) error {
-	log := logger.Get()
 
 	for _, folder := range cfg.Folders {
 		sourcePath := filepath.Join(cfg.Source, folder)
 		targetPath := filepath.Join(cfg.Target, folder)
 
-		log.Infow("Processing folder",
+		logger.Info("Processing folder",
 			"folder", folder,
 			"source", sourcePath,
 			"target", targetPath)
 
 		if err := proc.ProcessDirectory(sourcePath, targetPath); err != nil {
-			log.Errorw("Failed to process folder",
+			logger.Error("Failed to process folder",
 				"folder", folder,
 				"error", err)
 			return err
@@ -165,10 +162,9 @@ func processFolders(cfg *config.Config, proc processor.DirectoryProcessor) error
 }
 
 func processRootDirectory(cfg *config.Config, proc processor.DirectoryProcessor) error {
-	log := logger.Get()
 
 	if err := proc.ProcessDirectory(cfg.Source, cfg.Target); err != nil {
-		log.Errorw("Failed to process root directory", "error", err)
+		logger.Error("Failed to process root directory", "error", err)
 		return err
 	}
 	return nil

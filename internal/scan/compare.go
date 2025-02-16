@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/types"
 )
 
@@ -35,14 +36,14 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 		for _, file := range dir.Files {
 			relPath, err := filepath.Rel(source, file.Path)
 			if err != nil {
-				s.log.Debugw("Error getting relative path",
+				logger.Debug("Error getting relative path",
 					"path", file.Path,
 					"error", err)
 				continue
 			}
 
 			if matchesPattern(relPath, s.opts.ExcludePatterns) {
-				s.log.Debugw("Excluding file from comparison",
+				logger.Debug("Excluding file from comparison",
 					"relPath", relPath)
 				continue
 			}
@@ -71,7 +72,7 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 		for _, file := range dir.Files {
 			relPath, err := filepath.Rel(target, file.Path)
 			if err != nil {
-				s.log.Debugw("Error getting relative path for target file",
+				logger.Debug("Error getting relative path for target file",
 					"path", file.Path,
 					"error", err)
 				continue
@@ -96,7 +97,7 @@ func (s *Scanner) Compare(source, target string) ([]*FileComparison, error) {
 
 func (s *Scanner) determineValidationLevel(path string) types.ValidationLevel {
 	// Return the default validation level
-	s.log.Debugw("Using default validation level",
+	logger.Debug("Using default validation level",
 		"path", path,
 		"level", s.opts.Level)
 	return s.opts.Level
@@ -119,7 +120,7 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) 
 
 	// Metadata check for all levels
 	if src.Size != tgt.Size {
-		s.log.Debugw("Size mismatch",
+		logger.Debug("Size mismatch",
 			"path", src.Path,
 			"sourceSize", src.Size,
 			"targetSize", tgt.Size)
@@ -127,7 +128,7 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) 
 	}
 
 	if diff := abs(src.ModTime - tgt.ModTime); diff > modTimeToleranceSeconds {
-		s.log.Debugw("Modification time mismatch",
+		logger.Debug("Modification time mismatch",
 			"path", src.Path,
 			"sourceTime", src.ModTime,
 			"targetTime", tgt.ModTime)
@@ -148,17 +149,17 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) 
 
 		srcHash, err := hashPartialFile(src.Path, bufferSize)
 		if err != nil {
-			s.log.Debugw("Hash error", "path", src.Path, "error", err)
+			logger.Debug("Hash error", "path", src.Path, "error", err)
 			return StatusError
 		}
 		tgtHash, err := hashPartialFile(tgt.Path, bufferSize)
 		if err != nil {
-			s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
+			logger.Debug("Hash error", "path", tgt.Path, "error", err)
 			return StatusError
 		}
 
 		if srcHash != tgtHash {
-			s.log.Debugw("Content mismatch",
+			logger.Debug("Content mismatch",
 				"path", src.Path,
 				"level", level)
 			return StatusDiffer
@@ -169,17 +170,17 @@ func (s *Scanner) compareFiles(src, tgt *FileInfo, level types.ValidationLevel) 
 	// Deep validation: full content hash
 	srcHash, err := hashFile(src.Path)
 	if err != nil {
-		s.log.Debugw("Hash error", "path", src.Path, "error", err)
+		logger.Debug("Hash error", "path", src.Path, "error", err)
 		return StatusError
 	}
 	tgtHash, err := hashFile(tgt.Path)
 	if err != nil {
-		s.log.Debugw("Hash error", "path", tgt.Path, "error", err)
+		logger.Debug("Hash error", "path", tgt.Path, "error", err)
 		return StatusError
 	}
 
 	if srcHash != tgtHash {
-		s.log.Debugw("Content mismatch",
+		logger.Debug("Content mismatch",
 			"path", src.Path,
 			"level", level)
 		return StatusDiffer

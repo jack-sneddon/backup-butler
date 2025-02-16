@@ -22,56 +22,116 @@
 //
 //	log := logger.Get()
 //
-//	log.Debugw("Starting function", "param1", value1)
-//	log.Infow("Operation complete", "files", fileCount)
-//	log.Warnw("Retrying operation", "attempt", retryCount)
-//	log.Errorw("Operation failed", "error", err)
+//	logger.Debug("Starting function", "param1", value1)
+//	logger.Info("Operation complete", "files", fileCount)
+//	logger.Warn("Retrying operation", "attempt", retryCount)
+//	logger.Error("Operation failed", "error", err)
 //	log.Fatalw("Unrecoverable error", "error", err)
 //
 // Structured Logging:
 //
-//	log.Infow("message",
+//	logger.Info("message",
 //	  "key1", value1,
 //	  "key2", value2)
+//
+// internal/logger/logger.go
+// internal/logger/logger.go
 package logger
 
 import (
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"log/slog"
+	"os"
+	"sync"
 )
 
-var log *zap.SugaredLogger
-var LogLevel = zap.NewAtomicLevel()
+// Log levels
+const (
+	LevelDebug = "debug"
+	LevelInfo  = "info"
+	LevelWarn  = "warn"
+	LevelError = "error"
+)
 
+var (
+	defaultLogger *slog.Logger
+	logLevel      = new(slog.LevelVar)
+	once          sync.Once
+)
+
+// Init initializes the default logger with custom options
 func Init() error {
-	config := zap.NewDevelopmentConfig()
-	config.Level = LogLevel
+	once.Do(func() {
+		opts := &slog.HandlerOptions{
+			Level: logLevel,
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				// Remove time from the output for cleaner logs
+				if a.Key == slog.TimeKey {
+					return slog.Attr{}
+				}
+				return a
+			},
+		}
 
-	// Customize output format
-	config.DisableStacktrace = true
-	config.DisableCaller = true // Remove file/line references
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	config.EncoderConfig.TimeKey = "" // Remove timestamp
-	config.EncoderConfig.NameKey = "" // Remove logger name
-	config.EncoderConfig.CallerKey = ""
-	config.EncoderConfig.FunctionKey = ""
-
-	// Only show configuration block in debug mode
-	config.EncoderConfig.MessageKey = "msg"
-	config.EncoderConfig.ConsoleSeparator = " " // Clean up JSON formatting
-
-	logger, err := config.Build()
-	if err != nil {
-		return err
-	}
-	log = logger.Sugar()
+		handler := slog.NewTextHandler(os.Stderr, opts)
+		defaultLogger = slog.New(handler)
+		slog.SetDefault(defaultLogger)
+	})
 	return nil
 }
 
+// SetLevel sets the logging level
 func SetLevel(level string) error {
-	return LogLevel.UnmarshalText([]byte(level))
+	switch level {
+	case "debug":
+		logLevel.Set(slog.LevelDebug)
+	case "info":
+		logLevel.Set(slog.LevelInfo)
+	case "warn":
+		logLevel.Set(slog.LevelWarn)
+	case "error":
+		logLevel.Set(slog.LevelError)
+	default:
+		logLevel.Set(slog.LevelError) // Default to error level
+	}
+	return nil
 }
 
-func Get() *zap.SugaredLogger {
-	return log
+// Get returns the default logger instance
+func Get() *slog.Logger {
+	if defaultLogger == nil {
+		Init()
+	}
+	return defaultLogger
+}
+
+// Helper functions for structured logging
+
+// Debug logs at debug level with structured key-value pairs
+func Debug(msg string, args ...any) {
+	Get().Debug(msg, args...)
+}
+
+// Info logs at info level with structured key-value pairs
+func Info(msg string, args ...any) {
+	Get().Info(msg, args...)
+}
+
+// Warn logs at warn level with structured key-value pairs
+func Warn(msg string, args ...any) {
+	Get().Warn(msg, args...)
+}
+
+// Error logs at error level with structured key-value pairs
+func Error(msg string, args ...any) {
+	Get().Error(msg, args...)
+}
+
+// WithGroup creates a new logger with the specified group
+func WithGroup(name string) *slog.Logger {
+	return Get().WithGroup(name)
+}
+
+// With creates a new logger with the specified attributes
+func With(attrs ...any) *slog.Logger {
+	return Get().With(attrs...)
 }

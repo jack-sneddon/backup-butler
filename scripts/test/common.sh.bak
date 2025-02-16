@@ -1,0 +1,76 @@
+#!/bin/bash
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+TEST_ROOT="/tmp/backup-butler-tests"
+TEST_DIR="$TEST_ROOT/test-files"
+CONFIG_DIR="$TEST_ROOT/configs"
+
+# Default logging level
+LOG_LEVEL=${LOG_LEVEL:-"error"}
+VERBOSE=${VERBOSE:-false}
+
+# Process command line arguments
+process_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --log-level)
+                LOG_LEVEL="$2"
+                shift 2
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Function to run backup-butler with consistent logging
+run_backup_butler() {
+    local cmd="./bin/backup-butler $*"
+    if [[ -n "$LOG_LEVEL" ]]; then
+        cmd="$cmd --log-level $LOG_LEVEL"
+    fi
+    if $VERBOSE; then
+        echo "Running command: $cmd"
+    fi
+    eval "$cmd"
+}
+
+# Common setup for test environment
+setup_test_env() {
+    if $VERBOSE; then
+        echo "Setting up test environment with LOG_LEVEL=$LOG_LEVEL"
+        echo "TEST_ROOT: $TEST_ROOT"
+    fi
+
+    rm -rf "$TEST_ROOT"
+    # ... rest of your existing setup_test_env ...
+}
+
+# Function to capture and optionally display test output
+capture_test_output() {
+    local output="$1"
+    local expected_pattern="$2"
+    local test_name="$3"
+
+    if [[ $output =~ $expected_pattern ]]; then
+        printf "${GREEN}PASS${NC}\n"
+        $VERBOSE && echo "$output"
+        return 0
+    else
+        printf "${RED}FAIL${NC}\n"
+        # Always show output on failure, regardless of verbose setting
+        echo "Test failed: $test_name"
+        echo "Expected pattern: $expected_pattern"
+        echo "Output:"
+        echo "$output"
+        return 1
+    fi
+}

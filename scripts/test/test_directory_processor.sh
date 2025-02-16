@@ -21,17 +21,22 @@ setup_processor_test() {
     touch -t 202001010000 "$TEST_DIR/source/file2.txt"
 
     # Create test config
-    cat > "$TEST_DIR/config.yaml" << EOL
-source: "${TEST_DIR}/source"
-target: "${TEST_DIR}/target"
+    cat > "$TEST_DIR/test_config.yaml" << EOL
+source: "${TEST_DIR}"
+target: "${TEST_DIR}-target"
 comparison:
   algorithm: "sha256"
   level: "standard"
-  buffer_size: 32768
 storage:
-  device_type: "hdd"
-  max_threads: 4
+  source:
+    type: "hdd"
+    max_threads: 4
+  target:
+    type: "hdd"
+    max_threads: 4
 EOL
+
+    test_log "Created test configuration"
 }
 
 test_source_missing() {

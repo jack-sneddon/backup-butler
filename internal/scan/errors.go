@@ -65,8 +65,6 @@ func (p *Progress) AddError(err error) {
 	}
 }
 
-// internal/scan/errors.go
-
 // shouldIncludeFolder checks if a folder should be included based on config
 func shouldIncludeFolder(path string, includeFolders []string) bool {
 	// If no specific folders are specified, include all
@@ -113,7 +111,7 @@ func matchesPattern(path string, patterns []string) bool {
 		pattern = filepath.FromSlash(pattern)
 		matched, err := filepath.Match(pattern, path)
 		if err != nil {
-			logger.Get().Debugw("Pattern match error",
+			logger.Debug("Pattern match error",
 				"pattern", pattern,
 				"path", path,
 				"error", err)

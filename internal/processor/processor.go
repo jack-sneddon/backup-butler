@@ -10,12 +10,10 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
-	"go.uber.org/zap"
 )
 
 type directoryProcessor struct {
 	opts *ProcessorOptions
-	log  *zap.SugaredLogger
 	sem  chan struct{} // Semaphore for thread limiting
 }
 
@@ -56,40 +54,44 @@ func NewDirectoryProcessor(opts *ProcessorOptions) DirectoryProcessor {
 
 	return &directoryProcessor{
 		opts: opts,
-		log:  logger.Get(),
 		sem:  make(chan struct{}, opts.MaxThreads),
 	}
 }
 
 func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) error {
+	// Create a logger with directory processing context
+	procLogger := logger.WithGroup("processor").With(
+		"source", sourcePath,
+		"target", targetPath,
+		"threads", p.opts.MaxThreads,
+		"storageType", p.opts.StorageType,
+	)
+
+	// Operation start - INFO level
+	procLogger.Info("Starting directory processing")
+
 	// Ensure source directory exists
 	sourceInfo, err := os.Stat(sourcePath)
 	if err != nil {
-		p.log.Errorw("Failed to access source directory",
-			"path", sourcePath,
-			"error", err)
+		procLogger.Error("Failed to access source directory", "error", err)
 		return fmt.Errorf("failed to access source directory: %w", err)
 	}
 	if !sourceInfo.IsDir() {
-		p.log.Errorw("Source path is not a directory",
+		logger.Error("Source path is not a directory",
 			"path", sourcePath)
 		return fmt.Errorf("source path is not a directory: %s", sourcePath)
 	}
 
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetPath, sourceInfo.Mode()); err != nil {
-		p.log.Errorw("Failed to create target directory",
-			"path", targetPath,
-			"error", err)
+		procLogger.Error("Failed to create target directory", "error", err)
 		return fmt.Errorf("failed to create target directory: %w", err)
 	}
 
 	// Read directory entries
 	entries, err := os.ReadDir(sourcePath)
 	if err != nil {
-		p.log.Errorw("Failed to read source directory",
-			"path", sourcePath,
-			"error", err)
+		procLogger.Error("Failed to read source directory", "error", err)
 		return fmt.Errorf("failed to read source directory: %w", err)
 	}
 
@@ -106,9 +108,12 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 				}
 			}
 		}
+		procLogger.Debug("Directory statistics",
+			"totalSize", dirTotal,
+			"fileCount", fileCount)
 
 		if err := p.opts.Progress.StartDirectory(sourcePath, dirTotal, fileCount); err != nil {
-			p.log.Warnw("Failed to start progress tracking", "error", err)
+			procLogger.Error("Failed to start progress tracking", "error", err)
 		}
 	}
 
@@ -122,18 +127,38 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 			subSourcePath := filepath.Join(sourcePath, entry.Name())
 			subTargetPath := filepath.Join(targetPath, entry.Name())
 
+			procLogger.Debug("Processing subdirectory", "directory", entry.Name())
 			if err := p.ProcessDirectory(subSourcePath, subTargetPath); err != nil {
-				p.log.Errorw("Failed to process subdirectory",
+				procLogger.Error("Failed to process subdirectory",
 					"directory", entry.Name(),
 					"error", err)
 				errs <- err
 			}
+			procLogger.Debug("Finished subdirectory",
+				"directory", entry.Name(),
+				"sequence", "complete",
+			)
 			continue
 		}
 
 		wg.Add(1)
 		go func(e os.DirEntry) {
 			defer wg.Done()
+
+			// Get file info first
+			fileInfo, err := e.Info()
+			if err != nil {
+				procLogger.Error("Failed to get file info",
+					"file", e.Name(),
+					"error", err)
+				errs <- fmt.Errorf("failed to get file info for %s: %w", e.Name(), err)
+				return
+			}
+
+			fileLogger := procLogger.With(
+				"file", e.Name(),
+				"size", fileInfo.Size(),
+			)
 
 			// Acquire semaphore
 			p.sem <- struct{}{}
@@ -142,16 +167,14 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 			sourceFile := filepath.Join(sourcePath, e.Name())
 			targetFile := filepath.Join(targetPath, e.Name())
 
-			p.log.Debugw("Processing file",
-				"source", sourceFile,
-				"target", targetFile)
+			fileLogger.Debug("Processing file")
 
 			if err := p.copyFile(sourceFile, targetFile); err != nil {
-				p.log.Errorw("Failed to copy file",
-					"file", e.Name(),
-					"error", err)
+				fileLogger.Error("Failed to copy file", "error", err)
 				errs <- fmt.Errorf("failed to copy %s: %w", e.Name(), err)
 			}
+
+			fileLogger.Debug("File copy complete")
 
 			// progress tracking
 			if p.opts.Progress != nil {
@@ -175,17 +198,21 @@ func (p *directoryProcessor) ProcessDirectory(sourcePath, targetPath string) err
 	// Finish directory progress tracking
 	if p.opts.Progress != nil {
 		if err := p.opts.Progress.FinishDirectory(); err != nil {
-			p.log.Warnw("Failed to finish progress tracking", "error", err)
+			logger.Error("Failed to finish progress tracking", "error", err)
 		}
 	}
 
 	if len(processErrors) > 0 {
-		// Log all errors
+		// summarize errors
 		for _, err := range processErrors {
-			p.log.Errorw("File processing error", "error", err)
+			procLogger.Error("File processing error", "error", err)
 		}
 		return fmt.Errorf("failed to process %d files", len(processErrors))
 	}
+
+	// Operation complete - INFO level
+	procLogger.Info("Directory processing complete",
+		"files", len(entries))
 
 	return nil
 }

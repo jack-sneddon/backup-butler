@@ -9,14 +9,12 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
-	"go.uber.org/zap"
 )
 
 type tracker struct {
 	progress *Progress
 	display  *display
 	mu       sync.Mutex
-	log      *zap.SugaredLogger
 }
 
 func NewTracker() *tracker {
@@ -28,12 +26,12 @@ func NewTracker() *tracker {
 	return &tracker{
 		progress: p,
 		display:  NewDisplay(p),
-		log:      logger.Get(),
 	}
 }
 
 func (t *tracker) Start() error {
-	t.log.Debugw("Starting progress tracker")
+	logger.Debug("Starting progress tracker")
+
 	t.display.Start()
 	return nil
 }
@@ -47,17 +45,33 @@ func (t *tracker) UpdateProgress(bytes int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	progLogger := logger.WithGroup("progress")
+
+	// Guard against nil Current
+	if t.progress.Current == nil {
+		progLogger.Warn("Attempted to update progress with nil Current directory")
+		return
+	}
+
+	// Update progress - DEBUG level
+	progLogger.Debug("Updating progress",
+		"directory", t.progress.Current.Path,
+		"bytes", bytes)
+
 	if t.progress.Current != nil {
 		t.progress.Current.Processed += bytes
 		t.progress.Current.Done++
 		t.progress.BytesDone += bytes
 		t.progress.Processed++
 
-		t.log.Debugw("Progress updated",
-			"directory", t.progress.Current.Path,
-			"processed", t.progress.Processed,
-			"total", t.progress.TotalFiles,
-			"bytes", t.progress.BytesDone)
+		// Progress summary - DEBUG level
+		progLogger.Debug("Progress updated",
+			"dirProgress", fmt.Sprintf("%d/%d",
+				t.progress.Current.Done,
+				t.progress.Current.Files),
+			"totalProgress", fmt.Sprintf("%d/%d",
+				t.progress.Processed,
+				t.progress.TotalFiles))
 
 		// Update display immediately
 		t.display.render()
@@ -75,6 +89,11 @@ func (t *tracker) FinishDirectory() error {
 	defer t.mu.Unlock()
 
 	if t.progress.Current != nil {
+		logger.WithGroup("progress").Info("Directory processing complete",
+			"path", t.progress.Current.Path,
+			"processedFiles", t.progress.Current.Done,
+			"processedBytes", t.progress.Current.Processed)
+
 		t.progress.Current = nil
 	}
 	return nil
@@ -116,6 +135,14 @@ func (t *tracker) StartDirectory(path string, totalBytes int64, fileCount int) e
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	progLogger := logger.WithGroup("progress")
+
+	// Directory start - INFO level
+	progLogger.Info("Starting directory processing",
+		"path", path,
+		"totalBytes", totalBytes,
+		"fileCount", fileCount)
+
 	// Make sure we're tracking total files across all directories
 	t.progress.TotalFiles += fileCount  // Add to total
 	t.progress.TotalBytes += totalBytes // Add to total bytes
@@ -127,7 +154,7 @@ func (t *tracker) StartDirectory(path string, totalBytes int64, fileCount int) e
 		StartTime: time.Now(),
 	}
 
-	t.log.Debugw("Starting directory",
+	logger.Debug("Starting directory",
 		"path", path,
 		"totalBytes", totalBytes,
 		"fileCount", fileCount,

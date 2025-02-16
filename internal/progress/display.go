@@ -8,31 +8,28 @@ import (
 	"time"
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
-	"go.uber.org/zap"
 )
 
 type display struct {
 	progress *Progress
-	log      *zap.SugaredLogger
 }
 
 func NewDisplay(p *Progress) *display {
 	return &display{
 		progress: p,
-		log:      logger.Get(),
 	}
 }
 
 func (d *display) Start() {
-	d.log.Debugw("Display starting")
+	logger.Debug("Display starting")
 }
 
 func (d *display) Stop() {
-	d.log.Debugw("Display stopping")
+	logger.Debug("Display stopping")
 }
 
 func (d *display) render() {
-	d.log.Debugw("Rendering display",
+	logger.Debug("Rendering display",
 		"current", d.progress.Current,
 		"totalFiles", d.progress.TotalFiles,
 		"processed", d.progress.Processed)

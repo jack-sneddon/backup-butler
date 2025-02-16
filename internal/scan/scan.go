@@ -49,12 +49,10 @@ import (
 
 	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/types"
-	"go.uber.org/zap"
 )
 
 type Scanner struct {
 	stats    map[string]*DirectoryStats
-	log      *zap.SugaredLogger
 	progress *Progress
 	rootPath string
 	opts     *ScannerOptions
@@ -88,7 +86,6 @@ func NewScanner(options *ScannerOptions) *Scanner {
 
 	return &Scanner{
 		stats: make(map[string]*DirectoryStats),
-		log:   logger.Get(),
 		progress: &Progress{
 			Phase:     "initializing",
 			StartTime: time.Now(),
@@ -103,10 +100,18 @@ func (s *Scanner) GetProgress() *Progress {
 }
 
 func (s *Scanner) Scan(root string) (*Progress, error) {
+	scanLogger := logger.WithGroup("scanner")
+
+	scanLogger.Info("Starting scan operation",
+		"root", root,
+		"level", s.opts.Level)
+
 	s.rootPath = root
 	s.progress.Phase = "counting"
 
 	// Reset all counters
+	scanLogger.Debug("Resetting scan counters")
+
 	s.progress.TotalFiles = 0
 	s.progress.TotalBytes = 0
 	s.progress.ScannedFiles = 0
@@ -116,16 +121,18 @@ func (s *Scanner) Scan(root string) (*Progress, error) {
 	s.progress.ExcludedDirs = 0
 
 	// First pass - count total files and size
+	scanLogger.Info("Starting file count phase")
 	if err := s.countFiles(root); err != nil {
 		return nil, err
 	}
 
-	s.log.Debugw("Count complete",
+	scanLogger.Info("Count complete",
 		"totalFiles", s.progress.TotalFiles,
 		"totalBytes", s.progress.TotalBytes,
 		"excludedFiles", s.progress.ExcludedFiles)
 
 	// Second pass - detailed scan
+	scanLogger.Info("Starting detailed scan phase")
 	if err := s.scanFiles(root, 0); err != nil {
 		return nil, err
 	}
@@ -134,19 +141,28 @@ func (s *Scanner) Scan(root string) (*Progress, error) {
 }
 
 func (s *Scanner) countFiles(root string) error {
+	scanLogger := logger.WithGroup("scanner").With(
+		"root", root,
+		"level", s.opts.Level,
+		"maxDepth", s.opts.MaxDepth,
+	)
+	scanLogger.Info("Starting countFiles operation")
+
 	// Convert root to absolute path
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return err
 	}
 
-	s.log.Debugw("Starting file count",
+	logger.Debug("Starting file count",
 		"root", absRoot,
 		"excludePatterns", s.opts.ExcludePatterns,
 		"includeFolders", s.opts.IncludeFolders)
 
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		pathLogger := scanLogger.With("path", path)
 		if err != nil {
+			pathLogger.Error("Access error", "error", err)
 			s.progress.AddError(NewScanError(path, "access", err))
 			return nil // Continue despite errors
 		}
@@ -155,10 +171,11 @@ func (s *Scanner) countFiles(root string) error {
 			// Skip directory pattern checks for root
 			if path != absRoot {
 				if !shouldIncludeFolder(path, s.opts.IncludeFolders) {
-					s.log.Debugw("Excluding directory by folder list", "path", path)
+					pathLogger.Debug("Excluding directory by folder list")
 					s.progress.ExcludedDirs++
 					return filepath.SkipDir
 				}
+				pathLogger.Debug("Processing directory")
 				// Get relative path for directory
 				relPath, err := filepath.Rel(absRoot, path)
 				if err != nil {
@@ -166,7 +183,7 @@ func (s *Scanner) countFiles(root string) error {
 					return nil
 				}
 				if matchesPattern(relPath, s.opts.ExcludePatterns) {
-					s.log.Debugw("Excluding directory by pattern",
+					logger.Debug("Excluding directory by pattern",
 						"path", path,
 						"relPath", relPath)
 					s.progress.ExcludedDirs++
@@ -178,6 +195,10 @@ func (s *Scanner) countFiles(root string) error {
 		}
 
 		// Handle files
+		pathLogger.Debug("Processing file",
+			"size", info.Size(),
+			"modTime", info.ModTime(),
+		)
 		if len(s.opts.ExcludePatterns) > 0 {
 			relPath, err := filepath.Rel(absRoot, path)
 			if err != nil {
@@ -185,14 +206,14 @@ func (s *Scanner) countFiles(root string) error {
 				return nil
 			}
 			/*
-				s.log.Debugw("Checking file against patterns",
+				s.logger.Debug("Checking file against patterns",
 					"relPath", relPath,
 					"patterns", s.opts.ExcludePatterns)
 			*/
 
 			if shouldExclude := matchesPattern(relPath, s.opts.ExcludePatterns); shouldExclude {
 				/*
-					s.log.Debugw("Excluding file by pattern",
+					s.logger.Debug("Excluding file by pattern",
 						"path", path,
 						"relPath", relPath,
 						"patterns", s.opts.ExcludePatterns)
@@ -206,7 +227,7 @@ func (s *Scanner) countFiles(root string) error {
 		s.progress.TotalFiles++
 		s.progress.TotalBytes += info.Size()
 		/*
-			s.log.Debugw("Including file",
+			s.logger.Debug("Including file",
 				"path", path,
 				"size", info.Size(),
 				"totalFiles", s.progress.TotalFiles,
@@ -218,18 +239,23 @@ func (s *Scanner) countFiles(root string) error {
 }
 
 func (s *Scanner) scanFiles(root string, depth int) error {
+	scanLogger := logger.WithGroup("scanner").With("path", root)
+
 	// Convert root to absolute path
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return err
 	}
 
+	// Skip if max depth exceeded
 	if s.opts.MaxDepth >= 0 && depth > s.opts.MaxDepth {
+		scanLogger.Debug("Max depth exceeded", "depth", depth)
 		return nil
 	}
 
 	entries, err := os.ReadDir(root)
 	if err != nil {
+		scanLogger.Error("Failed to read directory", "error", err)
 		s.progress.AddError(NewScanError(root, "read_dir", err))
 		return nil
 	}
@@ -240,6 +266,7 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 	// Calculate directory totals first
 	var dirTotal int64
 	var fileCount int
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			info, err := entry.Info()
@@ -250,10 +277,9 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 		}
 	}
 
-	s.log.Debugw("Starting directory processing",
-		"directory", root,
-		"totalBytes", dirTotal,
-		"fileCount", fileCount)
+	// Directory start - DEBUG level
+	scanLogger.Debug("Processing directory",
+		"entries", len(entries))
 
 	s.progress.CurrentDirTotal = dirTotal
 	s.progress.CurrentDirFiles = fileCount
@@ -264,6 +290,9 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 		path := filepath.Join(root, entry.Name())
 		info, err := entry.Info()
 		if err != nil {
+			scanLogger.Error("Failed to get file info",
+				"file", entry.Name(),
+				"error", err)
 			s.progress.AddError(NewScanError(path, "stat", err))
 			continue
 		}
@@ -272,6 +301,10 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 			// Skip directory pattern checks for root
 			if path != absRoot {
 				if !shouldIncludeFolder(path, s.opts.IncludeFolders) {
+					// Add logging but keep existing logic
+					scanLogger.Debug("Excluding directory",
+						"path", path,
+						"reason", "folder list")
 					continue
 				}
 				// Get relative path for directory
@@ -281,6 +314,9 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 					continue
 				}
 				if matchesPattern(relPath, s.opts.ExcludePatterns) {
+					scanLogger.Debug("Excluding directory",
+						"path", path,
+						"reason", "pattern match")
 					continue
 				}
 			}
@@ -309,7 +345,7 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 		s.progress.CurrentDirDone++
 		s.progress.CurrentDirBytes += info.Size()
 
-		s.log.Debugw("File processed",
+		logger.Debug("File processed",
 			"directory", root,
 			"progress", fmt.Sprintf("%d/%d", s.progress.CurrentDirDone, s.progress.CurrentDirFiles),
 			"bytes", fmt.Sprintf("%d/%d", s.progress.CurrentDirBytes, s.progress.CurrentDirTotal))
@@ -335,6 +371,11 @@ func (s *Scanner) scanFiles(root string, depth int) error {
 		s.mu.Unlock()
 
 	}
+
+	// Directory complete - DEBUG level
+	scanLogger.Debug("Directory processing complete",
+		"scannedFiles", s.progress.ScannedFiles,
+		"processedBytes", s.progress.ProcessedBytes)
 
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jack-sneddon/backup-butler/internal/logger"
 	"github.com/jack-sneddon/backup-butler/internal/scan"
 	"github.com/jack-sneddon/backup-butler/internal/types"
 )
@@ -131,16 +132,35 @@ func NewFileValidator(strategy ComparisonStrategy, rules ValidationRules) *FileV
 
 // Validate performs both comparison and validation
 func (v *FileValidator) Validate(source, target *scan.FileInfo) ValidationResult {
+	valLogger := logger.WithGroup("validator").With(
+		"source", source.Path,
+		"target", target.Path,
+		"size", source.Size,
+		"strategy", string(v.strategy.Level()),
+	)
+
+	valLogger.Debug("Starting file validation")
+
 	// Determine appropriate comparison level based on rules
 	level := v.determineComparisonLevel(source.Path)
 
 	// If we need a different level than our current strategy, create it
 	if level != v.strategy.Level() {
+		valLogger.Info("Validation level escalated",
+			"from", v.strategy.Level(),
+			"to", level,
+		)
 		v.strategy = NewStrategy(level, nil) // Use default options
 	}
 
 	// Perform comparison
 	result := v.strategy.Compare(source, target)
+	valLogger.Debug("Validation complete",
+		"equal", result.Equal,
+		"reason", result.Reason,
+		"bytesRead", result.BytesRead,
+		"timeTaken", result.TimeTaken,
+	)
 
 	// Track statistics
 	switch level {
