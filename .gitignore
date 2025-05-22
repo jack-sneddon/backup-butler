@@ -7,6 +7,25 @@
 *.dll
 *.so
 *.dylib
+backup-butler
+
+# Build and cache directories
+/build/
+bin/
+dist/
+.tmp/
+.idea/
+.vscode/
+node_modules/
+vendor/
+.cache/
+.cache-loader/
+.nuxt/
+.next/
+out/
+public/
+dist/
+build/
 
 # Test binary, built with `go test -c`
 *.test
@@ -21,5 +40,30 @@
 go.work
 go.work.sum
 
+# Go Module Cache
+/go/pkg/
+
 # env file
 .env
+
+# Trunk
+.backup-butler-simplified/
+.trunk/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+EOF
+
+# repo for ai
+repomix-output.txt
+.repomixignore
+
+# python (for blackbox testing)
+venv/
+__pycache__/
+/$HOME/backup-logs
